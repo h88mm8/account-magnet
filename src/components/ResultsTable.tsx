@@ -1,8 +1,9 @@
-import { motion } from "framer-motion";
-import { Building2, MapPin, Users, ExternalLink } from "lucide-react";
+import { Building2, MapPin, Users, ExternalLink, MoreHorizontal } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { AccountResult } from "@/lib/api/unipile";
 
 type Props = {
@@ -13,116 +14,106 @@ type Props = {
 export function ResultsTable({ results, isLoading }: Props) {
   if (isLoading) {
     return (
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card p-16"
-      >
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-muted border-t-primary" />
-        <p className="text-sm text-muted-foreground">Buscando leads no Sales Navigator...</p>
-      </motion.div>
+      <Card className="flex flex-col items-center justify-center gap-4 border border-border p-16 shadow-none">
+        <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-muted border-t-primary" />
+        <p className="text-sm text-muted-foreground">Buscando leads...</p>
+      </Card>
     );
   }
 
   if (results.length === 0) {
     return (
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="flex flex-col items-center justify-center gap-3 rounded-xl border border-border bg-card p-16"
-      >
-        <Building2 className="h-12 w-12 text-muted-foreground/40" />
-        <p className="text-muted-foreground">Nenhum resultado encontrado. Ajuste seus filtros e tente novamente.</p>
-      </motion.div>
+      <Card className="flex flex-col items-center justify-center gap-3 border border-border p-16 shadow-none">
+        <Building2 className="h-10 w-10 text-muted-foreground/30" />
+        <p className="text-sm text-muted-foreground">Nenhum resultado. Ajuste seus filtros e tente novamente.</p>
+      </Card>
     );
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
-      className="overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)]"
-    >
-      <div className="border-b border-border px-6 py-4">
+    <Card className="overflow-hidden border border-border shadow-none">
+      <div className="flex items-center justify-between border-b border-border px-5 py-3">
         <p className="text-sm text-muted-foreground">
-          <span className="font-semibold text-foreground">{results.length}</span> resultados encontrados
+          <span className="font-semibold text-foreground">{results.length}</span> resultados
         </p>
+        <Button variant="ghost" size="sm" className="text-xs text-muted-foreground">
+          Exportar
+        </Button>
       </div>
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
-            <TableRow className="bg-muted/50">
-              <TableHead className="font-display font-semibold">Empresa</TableHead>
-              <TableHead className="font-display font-semibold">Setor</TableHead>
-              <TableHead className="font-display font-semibold">Localização</TableHead>
-              <TableHead className="font-display font-semibold">Funcionários</TableHead>
-              <TableHead className="font-display font-semibold">Ação</TableHead>
+            <TableRow className="border-b border-border hover:bg-transparent">
+              <TableHead className="w-10 pl-5">
+                <Checkbox />
+              </TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Empresa</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Setor</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Localização</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Funcionários</TableHead>
+              <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {results.map((item, index) => (
-              <motion.tr
+              <TableRow
                 key={item.id || index}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.3, delay: index * 0.05 }}
-                className="group border-b border-border transition-colors hover:bg-muted/30"
+                className="group border-b border-border transition-colors hover:bg-accent/50"
               >
+                <TableCell className="pl-5">
+                  <Checkbox />
+                </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-                      <Building2 className="h-4 w-4 text-primary" />
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
+                      <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
                     </div>
-                    <span className="font-medium text-foreground">
-                      {item.name || "Empresa desconhecida"}
-                    </span>
+                    <div>
+                      <span className="text-sm font-medium text-foreground">
+                        {item.name || "Empresa desconhecida"}
+                      </span>
+                    </div>
                   </div>
                 </TableCell>
                 <TableCell>
                   {item.industry ? (
-                    <Badge variant="secondary" className="font-normal">
+                    <Badge variant="secondary" className="font-normal text-xs">
                       {item.industry}
                     </Badge>
                   ) : (
-                    <span className="text-muted-foreground">—</span>
+                    <span className="text-sm text-muted-foreground">—</span>
                   )}
                 </TableCell>
                 <TableCell>
                   {item.location ? (
                     <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                      <MapPin className="h-3.5 w-3.5" />
+                      <MapPin className="h-3 w-3" />
                       {item.location}
                     </div>
                   ) : (
-                    <span className="text-muted-foreground">—</span>
+                    <span className="text-sm text-muted-foreground">—</span>
                   )}
                 </TableCell>
                 <TableCell>
                   {item.employeeCount ? (
-                    <div className="flex items-center gap-1.5 text-sm">
-                      <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                    <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                      <Users className="h-3 w-3" />
                       {item.employeeCount}
                     </div>
                   ) : (
-                    <span className="text-muted-foreground">—</span>
+                    <span className="text-sm text-muted-foreground">—</span>
                   )}
                 </TableCell>
                 <TableCell>
-                  {item.linkedinUrl && (
-                    <Button variant="ghost" size="sm" asChild>
-                      <a href={item.linkedinUrl} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="mr-1 h-3.5 w-3.5" />
-                        Ver
-                      </a>
-                    </Button>
-                  )}
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground opacity-0 group-hover:opacity-100">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
                 </TableCell>
-              </motion.tr>
+              </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
-    </motion.div>
+    </Card>
   );
 }
