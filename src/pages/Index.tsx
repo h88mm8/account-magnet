@@ -22,10 +22,7 @@ const Index = () => {
     setHasSearched(true);
 
     try {
-      const data = await searchAccounts({
-        ...filters,
-        accountId: "", // será configurado quando backend estiver ativo
-      });
+      const data = await searchAccounts(filters);
       setResults(data.items || []);
     } catch (error) {
       console.error("Search error:", error);

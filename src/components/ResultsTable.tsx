@@ -57,7 +57,7 @@ export function ResultsTable({ results, isLoading }: Props) {
           <TableBody>
             {results.map((item, index) => (
               <TableRow
-                key={item.id || index}
+                key={index}
                 className="group border-b border-border transition-colors hover:bg-accent/50"
               >
                 <TableCell className="pl-5">

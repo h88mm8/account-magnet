@@ -11,12 +11,13 @@ Deno.serve(async (req) => {
 
   try {
     const apiKey = Deno.env.get("UNIPILE_API_KEY");
-    const dsn = Deno.env.get("UNIPILE_DSN");
+    const baseUrl = Deno.env.get("UNIPILE_BASE_URL");
+    const accountId = Deno.env.get("UNIPILE_ACCOUNT_ID");
 
-    if (!apiKey || !dsn) {
+    if (!apiKey || !baseUrl || !accountId) {
       return new Response(
         JSON.stringify({
-          error: "UNIPILE_API_KEY and UNIPILE_DSN must be configured",
+          error: "UNIPILE_API_KEY, UNIPILE_BASE_URL and UNIPILE_ACCOUNT_ID must be configured",
         }),
         {
           status: 500,
@@ -25,18 +26,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { keywords, revenue, location, industry, companySize, accountId } =
+    const { keywords, revenue, location, industry, companySize } =
       await req.json();
-
-    if (!accountId) {
-      return new Response(
-        JSON.stringify({ error: "accountId is required" }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
 
     // Build Sales Navigator search URL for Accounts
     const searchUrl = buildSalesNavUrl({
@@ -49,7 +40,7 @@ Deno.serve(async (req) => {
 
     console.log("Search URL:", searchUrl);
 
-    const unipileUrl = `https://${dsn}/api/v1/linkedin/search?account_id=${encodeURIComponent(accountId)}`;
+    const unipileUrl = `${baseUrl}/api/v1/linkedin/search`;
 
     const response = await fetch(unipileUrl, {
       method: "POST",
@@ -59,6 +50,7 @@ Deno.serve(async (req) => {
         "content-type": "application/json",
       },
       body: JSON.stringify({
+        account_id: accountId,
         api: "sales_navigator",
         category: "companies",
         url: searchUrl,
@@ -83,19 +75,15 @@ Deno.serve(async (req) => {
 
     // Normalize response items
     const items = (data.items || []).map((item: Record<string, unknown>) => ({
-      type: item.type || "COMPANY",
-      id: item.id || "",
       name: item.name || item.title || "",
       industry: item.industry || "",
       location: item.location || item.headquarters || "",
       employeeCount: item.employeeCount || item.employee_count || item.size || "",
-      description: item.description || "",
       linkedinUrl: item.linkedinUrl || item.linkedin_url || item.url || "",
-      raw: item,
     }));
 
     return new Response(
-      JSON.stringify({ object: data.object || "LinkedinSearch", items }),
+      JSON.stringify({ items }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
@@ -121,7 +109,6 @@ function buildSalesNavUrl(params: {
   industry?: string;
   companySize?: string;
 }): string {
-  // Sales Navigator company search base URL
   const base = "https://www.linkedin.com/sales/search/company";
   const queryParts: string[] = [];
 
