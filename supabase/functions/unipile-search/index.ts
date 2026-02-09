@@ -14,6 +14,12 @@ Deno.serve(async (req) => {
     const baseUrl = Deno.env.get("UNIPILE_BASE_URL");
     const accountId = Deno.env.get("UNIPILE_ACCOUNT_ID");
 
+    // Temporary debug logging - REMOVE AFTER DEBUGGING
+    console.log("UNIPILE_API_KEY is present:", !!apiKey);
+    console.log("UNIPILE_API_KEY length:", apiKey?.length);
+    console.log("UNIPILE_API_KEY first 4 chars:", apiKey?.substring(0, 4));
+    console.log("UNIPILE_API_KEY last 4 chars:", apiKey?.substring((apiKey?.length || 4) - 4));
+
     if (!apiKey || !baseUrl || !accountId) {
       return new Response(
         JSON.stringify({
