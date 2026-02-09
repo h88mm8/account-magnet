@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, MapPin, Users, DollarSign, Factory, SlidersHorizontal } from "lucide-react";
+import { Search, MapPin, Users, DollarSign, Factory } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -41,6 +41,65 @@ const revenueRanges = [
   { value: "7", label: "> $1B" },
 ];
 
+const industries = [
+  { value: "any", label: "Qualquer" },
+  { value: "4", label: "Computer Software" },
+  { value: "96", label: "IT Services" },
+  { value: "6", label: "Computer Networking" },
+  { value: "3", label: "Computer Hardware" },
+  { value: "5", label: "Telecomunicações" },
+  { value: "94", label: "Consultoria de Gestão" },
+  { value: "43", label: "Serviços Financeiros" },
+  { value: "41", label: "Bancos" },
+  { value: "42", label: "Seguros" },
+  { value: "14", label: "Marketing e Publicidade" },
+  { value: "80", label: "Imobiliário" },
+  { value: "12", label: "Saúde" },
+  { value: "116", label: "Farmacêutica" },
+  { value: "11", label: "Biotecnologia" },
+  { value: "17", label: "Automotivo" },
+  { value: "48", label: "Construção" },
+  { value: "67", label: "Educação" },
+  { value: "68", label: "E-Learning" },
+  { value: "69", label: "Jurídico" },
+  { value: "27", label: "Varejo" },
+  { value: "28", label: "Bens de Consumo" },
+  { value: "13", label: "Alimentos e Bebidas" },
+  { value: "110", label: "Óleo e Energia" },
+  { value: "118", label: "Renováveis e Meio Ambiente" },
+  { value: "51", label: "Logística" },
+  { value: "147", label: "Transporte" },
+  { value: "129", label: "Recursos Humanos" },
+  { value: "137", label: "Recrutamento" },
+  { value: "8", label: "Eng. Mecânica/Industrial" },
+  { value: "104", label: "Mineração e Metais" },
+  { value: "44", label: "Governo" },
+  { value: "31", label: "Agricultura" },
+  { value: "47", label: "Contabilidade" },
+  { value: "1", label: "Defesa e Espaço" },
+  { value: "7", label: "Semicondutores" },
+  { value: "29", label: "Cosméticos" },
+];
+
+const locations = [
+  { value: "any", label: "Qualquer" },
+  { value: "brasil", label: "Brasil" },
+  { value: "sao_paulo", label: "São Paulo" },
+  { value: "rio_de_janeiro", label: "Rio de Janeiro" },
+  { value: "minas_gerais", label: "Minas Gerais" },
+  { value: "parana", label: "Paraná" },
+  { value: "santa_catarina", label: "Santa Catarina" },
+  { value: "rio_grande_do_sul", label: "Rio Grande do Sul" },
+  { value: "bahia", label: "Bahia" },
+  { value: "distrito_federal", label: "Distrito Federal" },
+  { value: "ceara", label: "Ceará" },
+  { value: "pernambuco", label: "Pernambuco" },
+  { value: "goias", label: "Goiás" },
+  { value: "estados_unidos", label: "Estados Unidos" },
+  { value: "portugal", label: "Portugal" },
+  { value: "reino_unido", label: "Reino Unido" },
+];
+
 export function SearchForm({ onSearch, isLoading }: Props) {
   const [filters, setFilters] = useState<SearchFilters>({
     keywords: "",
@@ -80,25 +139,37 @@ export function SearchForm({ onSearch, isLoading }: Props) {
                 <MapPin className="h-3 w-3" />
                 Localização
               </label>
-              <Input
-                placeholder="Ex: São Paulo"
-                value={filters.location}
-                onChange={(e) => update("location", e.target.value)}
-                className="h-9 text-sm"
-              />
+              <Select value={filters.location || "any"} onValueChange={(v) => update("location", v)}>
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue placeholder="Qualquer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {locations.map((l) => (
+                    <SelectItem key={l.value} value={l.value}>
+                      {l.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            <div className="min-w-[140px] flex-1 space-y-1.5">
+            <div className="min-w-[160px] flex-1 space-y-1.5">
               <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 <Factory className="h-3 w-3" />
                 Setor
               </label>
-              <Input
-                placeholder="Ex: Software"
-                value={filters.industry}
-                onChange={(e) => update("industry", e.target.value)}
-                className="h-9 text-sm"
-              />
+              <Select value={filters.industry || "any"} onValueChange={(v) => update("industry", v)}>
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue placeholder="Qualquer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {industries.map((i) => (
+                    <SelectItem key={i.value} value={i.value}>
+                      {i.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="min-w-[140px] flex-1 space-y-1.5">
