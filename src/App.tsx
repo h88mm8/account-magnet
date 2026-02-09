@@ -7,6 +7,11 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { TopBar } from "@/components/TopBar";
 import Index from "./pages/Index";
+import Companies from "./pages/Companies";
+import Contacts from "./pages/Contacts";
+import Analytics from "./pages/Analytics";
+import Settings from "./pages/Settings";
+import Help from "./pages/Help";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -25,6 +30,11 @@ const App = () => (
               <main className="flex-1 overflow-auto bg-background">
                 <Routes>
                   <Route path="/" element={<Index />} />
+                  <Route path="/companies" element={<Companies />} />
+                  <Route path="/contacts" element={<Contacts />} />
+                  <Route path="/analytics" element={<Analytics />} />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/help" element={<Help />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </main>
