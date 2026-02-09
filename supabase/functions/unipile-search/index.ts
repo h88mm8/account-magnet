@@ -39,8 +39,10 @@ Deno.serve(async (req) => {
     });
 
     console.log("Search URL:", searchUrl);
+    console.log("Account ID:", accountId);
+    console.log("Base URL:", baseUrl);
 
-    const unipileUrl = `${baseUrl}/api/v1/linkedin/search`;
+    const unipileUrl = `${baseUrl}/api/v1/linkedin/search?account_id=${encodeURIComponent(accountId)}`;
 
     const response = await fetch(unipileUrl, {
       method: "POST",
@@ -50,7 +52,6 @@ Deno.serve(async (req) => {
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        account_id: accountId,
         api: "sales_navigator",
         category: "companies",
         url: searchUrl,
