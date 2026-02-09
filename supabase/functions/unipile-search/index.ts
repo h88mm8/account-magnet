@@ -4,7 +4,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-// ── Sales Navigator ID mappings ──────────────────────────────────────
+// ── Sales Navigator ID mappings — Accounts ───────────────────────────
 
 const COMPANY_HEADCOUNT_MAP: Record<string, { id: string; text: string }> = {
   "B": { id: "B", text: "1-10" },
@@ -85,64 +85,143 @@ const REGION_MAP: Record<string, { id: string; text: string }> = {
   "reino_unido": { id: "101165590", text: "United Kingdom" },
 };
 
-// ── URL builder ──────────────────────────────────────────────────────
+// ── Sales Navigator ID mappings — Leads ──────────────────────────────
+
+const SENIORITY_MAP: Record<string, { id: string; text: string }> = {
+  "1": { id: "1", text: "Unpaid" },
+  "2": { id: "2", text: "Training" },
+  "3": { id: "3", text: "Entry" },
+  "4": { id: "4", text: "Senior" },
+  "5": { id: "5", text: "Manager" },
+  "6": { id: "6", text: "Director" },
+  "7": { id: "7", text: "VP" },
+  "8": { id: "8", text: "CXO" },
+  "9": { id: "9", text: "Owner" },
+  "10": { id: "10", text: "Partner" },
+};
+
+const FUNCTION_MAP: Record<string, { id: string; text: string }> = {
+  "1": { id: "1", text: "Accounting" },
+  "2": { id: "2", text: "Administrative" },
+  "3": { id: "3", text: "Arts and Design" },
+  "4": { id: "4", text: "Business Development" },
+  "5": { id: "5", text: "Community and Social Services" },
+  "6": { id: "6", text: "Consulting" },
+  "7": { id: "7", text: "Education" },
+  "8": { id: "8", text: "Engineering" },
+  "9": { id: "9", text: "Entrepreneurship" },
+  "10": { id: "10", text: "Finance" },
+  "11": { id: "11", text: "Healthcare Services" },
+  "12": { id: "12", text: "Human Resources" },
+  "13": { id: "13", text: "Information Technology" },
+  "14": { id: "14", text: "Legal" },
+  "15": { id: "15", text: "Marketing" },
+  "16": { id: "16", text: "Media and Communication" },
+  "17": { id: "17", text: "Military and Protective Services" },
+  "18": { id: "18", text: "Operations" },
+  "19": { id: "19", text: "Product Management" },
+  "20": { id: "20", text: "Program and Project Management" },
+  "21": { id: "21", text: "Purchasing" },
+  "22": { id: "22", text: "Quality Assurance" },
+  "23": { id: "23", text: "Real Estate" },
+  "24": { id: "24", text: "Research" },
+  "25": { id: "25", text: "Sales" },
+  "26": { id: "26", text: "Support" },
+};
+
+const YEARS_OF_EXPERIENCE_MAP: Record<string, { id: string; text: string }> = {
+  "1": { id: "1", text: "Less than 1 year" },
+  "2": { id: "2", text: "1 to 2 years" },
+  "3": { id: "3", text: "3 to 5 years" },
+  "4": { id: "4", text: "6 to 10 years" },
+  "5": { id: "5", text: "More than 10 years" },
+};
+
+const YEARS_AT_CURRENT_COMPANY_MAP: Record<string, { id: string; text: string }> = {
+  "1": { id: "1", text: "Less than 1 year" },
+  "2": { id: "2", text: "1 to 2 years" },
+  "3": { id: "3", text: "3 to 5 years" },
+  "4": { id: "4", text: "6 to 10 years" },
+  "5": { id: "5", text: "More than 10 years" },
+};
+
+// ── Shared types ─────────────────────────────────────────────────────
 
 type FilterEntry = {
   type: string;
   values: { id: string; text: string; selectionType: string }[];
 };
 
+function resolveMulti(
+  input: string | string[] | undefined,
+  map: Record<string, { id: string; text: string }>
+): { id: string; text: string; selectionType: string }[] {
+  if (!input) return [];
+  const keys = Array.isArray(input) ? input : [input];
+  return keys
+    .filter((k) => k && k !== "any")
+    .map((k) => {
+      const mapped = map[k];
+      return mapped ? { ...mapped, selectionType: "INCLUDED" } : null;
+    })
+    .filter(Boolean) as { id: string; text: string; selectionType: string }[];
+}
+
+function addFilter(filters: FilterEntry[], type: string, values: { id: string; text: string; selectionType: string }[]) {
+  if (values.length > 0) {
+    filters.push({ type, values });
+  }
+}
+
+// ── URL builder — Accounts ───────────────────────────────────────────
+
 function buildSalesNavAccountUrl(params: {
   keywords?: string;
-  companySize?: string;
-  revenue?: string;
-  industry?: string;
-  location?: string;
+  companySize?: string | string[];
+  revenue?: string | string[];
+  industry?: string | string[];
+  location?: string | string[];
 }): string {
   const base = "https://www.linkedin.com/sales/search/company";
   const filters: FilterEntry[] = [];
 
-  if (params.companySize && params.companySize !== "any") {
-    const mapped = COMPANY_HEADCOUNT_MAP[params.companySize];
-    if (mapped) {
-      filters.push({
-        type: "COMPANY_HEADCOUNT",
-        values: [{ ...mapped, selectionType: "INCLUDED" }],
-      });
-    }
-  }
+  addFilter(filters, "COMPANY_HEADCOUNT", resolveMulti(params.companySize, COMPANY_HEADCOUNT_MAP));
+  addFilter(filters, "ANNUAL_REVENUE", resolveMulti(params.revenue, ANNUAL_REVENUE_MAP));
+  addFilter(filters, "INDUSTRY", resolveMulti(params.industry, INDUSTRY_MAP));
+  addFilter(filters, "REGION", resolveMulti(params.location, REGION_MAP));
 
-  if (params.revenue && params.revenue !== "any") {
-    const mapped = ANNUAL_REVENUE_MAP[params.revenue];
-    if (mapped) {
-      filters.push({
-        type: "ANNUAL_REVENUE",
-        values: [{ ...mapped, selectionType: "INCLUDED" }],
-      });
-    }
-  }
+  return buildFinalUrl(base, filters, params.keywords);
+}
 
-  if (params.industry) {
-    const mapped = INDUSTRY_MAP[params.industry];
-    if (mapped) {
-      filters.push({
-        type: "INDUSTRY",
-        values: [{ ...mapped, selectionType: "INCLUDED" }],
-      });
-    }
-  }
+// ── URL builder — Leads ──────────────────────────────────────────────
 
-  if (params.location) {
-    const mapped = REGION_MAP[params.location];
-    if (mapped) {
-      filters.push({
-        type: "REGION",
-        values: [{ ...mapped, selectionType: "INCLUDED" }],
-      });
-    }
-  }
+function buildSalesNavLeadUrl(params: {
+  keywords?: string;
+  seniority?: string | string[];
+  jobFunction?: string | string[];
+  industry?: string | string[];
+  location?: string | string[];
+  companySize?: string | string[];
+  yearsOfExperience?: string | string[];
+  yearsAtCurrentCompany?: string | string[];
+}): string {
+  const base = "https://www.linkedin.com/sales/search/people";
+  const filters: FilterEntry[] = [];
 
-  // Build query=(filters:List(...),keywords:TEXT)
+  addFilter(filters, "SENIORITY_LEVEL", resolveMulti(params.seniority, SENIORITY_MAP));
+  addFilter(filters, "FUNCTION", resolveMulti(params.jobFunction, FUNCTION_MAP));
+  addFilter(filters, "INDUSTRY", resolveMulti(params.industry, INDUSTRY_MAP));
+  addFilter(filters, "REGION", resolveMulti(params.location, REGION_MAP));
+  addFilter(filters, "COMPANY_HEADCOUNT", resolveMulti(params.companySize, COMPANY_HEADCOUNT_MAP));
+  addFilter(filters, "YEARS_OF_EXPERIENCE", resolveMulti(params.yearsOfExperience, YEARS_OF_EXPERIENCE_MAP));
+  addFilter(filters, "YEARS_AT_CURRENT_COMPANY", resolveMulti(params.yearsAtCurrentCompany, YEARS_AT_CURRENT_COMPANY_MAP));
+
+  return buildFinalUrl(base, filters, params.keywords);
+}
+
+// ── Shared URL formatter ─────────────────────────────────────────────
+
+function buildFinalUrl(base: string, filters: FilterEntry[], keywords?: string): string {
   const parts: string[] = [];
 
   if (filters.length > 0) {
@@ -158,14 +237,11 @@ function buildSalesNavAccountUrl(params: {
     parts.push(`filters:List(${filterStrings.join(",")})`);
   }
 
-  if (params.keywords) {
-    parts.push(`keywords:${encodeURIComponent(params.keywords)}`);
+  if (keywords) {
+    parts.push(`keywords:${encodeURIComponent(keywords)}`);
   }
 
-  if (parts.length === 0) {
-    return base;
-  }
-
+  if (parts.length === 0) return base;
   return `${base}?query=(${parts.join(",")})`;
 }
 
@@ -193,18 +269,52 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { keywords, revenue, location, industry, companySize } =
-      await req.json();
-
-    const searchUrl = buildSalesNavAccountUrl({
+    const body = await req.json();
+    const {
+      // Common
+      searchType = "accounts", // "accounts" | "leads"
+      page = 1,
+      // Account filters
       keywords,
       revenue,
       location,
       industry,
       companySize,
-    });
+      // Lead filters
+      seniority,
+      jobFunction,
+      yearsOfExperience,
+      yearsAtCurrentCompany,
+    } = body;
 
-    console.log("Sales Navigator URL:", searchUrl);
+    const isLeads = searchType === "leads";
+
+    const searchUrl = isLeads
+      ? buildSalesNavLeadUrl({
+          keywords,
+          seniority,
+          jobFunction,
+          industry,
+          location,
+          companySize,
+          yearsOfExperience,
+          yearsAtCurrentCompany,
+        })
+      : buildSalesNavAccountUrl({
+          keywords,
+          companySize,
+          revenue,
+          industry,
+          location,
+        });
+
+    // Append page parameter to URL for pagination
+    const paginatedUrl =
+      page > 1
+        ? `${searchUrl}${searchUrl.includes("?") ? "&" : "?"}page=${page}`
+        : searchUrl;
+
+    console.log(`Sales Navigator URL (${searchType}, page ${page}):`, paginatedUrl);
 
     const unipileUrl = `${baseUrl}/api/v1/linkedin/search?account_id=${encodeURIComponent(accountId)}`;
 
@@ -217,8 +327,8 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         api: "sales_navigator",
-        category: "companies",
-        url: searchUrl,
+        category: isLeads ? "people" : "companies",
+        url: paginatedUrl,
       }),
     });
 
@@ -238,17 +348,36 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Normalize response items
-    const items = (data.items || []).map((item: Record<string, unknown>) => ({
-      name: item.name || item.title || "",
-      industry: item.industry || "",
-      location: item.location || item.headquarters || "",
-      employeeCount: item.employeeCount || item.employee_count || item.size || "",
-      linkedinUrl: item.linkedinUrl || item.linkedin_url || item.url || "",
-    }));
+    // Normalize response
+    let items;
+    if (isLeads) {
+      items = (data.items || []).map((item: Record<string, unknown>) => ({
+        firstName: item.first_name || item.firstName || "",
+        lastName: item.last_name || item.lastName || "",
+        title: item.title || item.headline || "",
+        company: item.company || item.current_company || "",
+        location: item.location || "",
+        linkedinUrl: item.linkedinUrl || item.linkedin_url || item.url || "",
+      }));
+    } else {
+      items = (data.items || []).map((item: Record<string, unknown>) => ({
+        name: item.name || item.title || "",
+        industry: item.industry || "",
+        location: item.location || item.headquarters || "",
+        employeeCount: item.employeeCount || item.employee_count || item.size || "",
+        linkedinUrl: item.linkedinUrl || item.linkedin_url || item.url || "",
+      }));
+    }
 
     return new Response(
-      JSON.stringify({ items }),
+      JSON.stringify({
+        items,
+        pagination: {
+          page,
+          hasMore: (data.items || []).length >= 25,
+          totalEstimate: data.total || null,
+        },
+      }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       }

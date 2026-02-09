@@ -1,0 +1,166 @@
+import { useState } from "react";
+import { Search, MapPin, Users, Factory, Briefcase, Award, Clock, Building } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { MultiSelect } from "@/components/MultiSelect";
+import {
+  seniorityLevels,
+  jobFunctions,
+  industries,
+  locations,
+  companySizes,
+  yearsOfExperience,
+  yearsAtCurrentCompany,
+} from "@/lib/filter-catalogs";
+import type { LeadSearchFilters } from "@/lib/api/unipile";
+
+type Props = {
+  onSearch: (filters: LeadSearchFilters) => void;
+  isLoading: boolean;
+};
+
+export function LeadSearchForm({ onSearch, isLoading }: Props) {
+  const [keywords, setKeywords] = useState("");
+  const [seniority, setSeniority] = useState<string[]>([]);
+  const [jobFunction, setJobFunction] = useState<string[]>([]);
+  const [industry, setIndustry] = useState<string[]>([]);
+  const [location, setLocation] = useState<string[]>([]);
+  const [companySize, setCompanySize] = useState<string[]>([]);
+  const [experience, setExperience] = useState<string[]>([]);
+  const [tenure, setTenure] = useState<string[]>([]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSearch({
+      keywords: keywords || undefined,
+      seniority: seniority.length ? seniority : undefined,
+      jobFunction: jobFunction.length ? jobFunction : undefined,
+      industry: industry.length ? industry : undefined,
+      location: location.length ? location : undefined,
+      companySize: companySize.length ? companySize : undefined,
+      yearsOfExperience: experience.length ? experience : undefined,
+      yearsAtCurrentCompany: tenure.length ? tenure : undefined,
+    });
+  };
+
+  return (
+    <Card className="border border-border shadow-none">
+      <CardContent className="p-5">
+        <form onSubmit={handleSubmit}>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar pessoas por cargo, nome ou palavra-chave..."
+              value={keywords}
+              onChange={(e) => setKeywords(e.target.value)}
+              className="h-11 border-border bg-background pl-10 text-sm"
+            />
+          </div>
+
+          {/* Row 1: Core lead filters */}
+          <div className="mt-4 flex flex-wrap items-end gap-3">
+            <div className="min-w-[160px] flex-1 space-y-1.5">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <Award className="h-3 w-3" />
+                Senioridade
+              </label>
+              <MultiSelect
+                options={seniorityLevels}
+                value={seniority}
+                onChange={setSeniority}
+                placeholder="Qualquer"
+              />
+            </div>
+
+            <div className="min-w-[160px] flex-1 space-y-1.5">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <Briefcase className="h-3 w-3" />
+                Função
+              </label>
+              <MultiSelect
+                options={jobFunctions}
+                value={jobFunction}
+                onChange={setJobFunction}
+                placeholder="Qualquer"
+              />
+            </div>
+
+            <div className="min-w-[160px] flex-1 space-y-1.5">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <Factory className="h-3 w-3" />
+                Setor
+              </label>
+              <MultiSelect
+                options={industries}
+                value={industry}
+                onChange={setIndustry}
+                placeholder="Qualquer"
+              />
+            </div>
+
+            <div className="min-w-[160px] flex-1 space-y-1.5">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <MapPin className="h-3 w-3" />
+                Localização
+              </label>
+              <MultiSelect
+                options={locations}
+                value={location}
+                onChange={setLocation}
+                placeholder="Qualquer"
+              />
+            </div>
+          </div>
+
+          {/* Row 2: Additional lead filters */}
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <div className="min-w-[140px] flex-1 space-y-1.5">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <Users className="h-3 w-3" />
+                Tamanho da empresa
+              </label>
+              <MultiSelect
+                options={companySizes}
+                value={companySize}
+                onChange={setCompanySize}
+                placeholder="Qualquer"
+              />
+            </div>
+
+            <div className="min-w-[140px] flex-1 space-y-1.5">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                Experiência
+              </label>
+              <MultiSelect
+                options={yearsOfExperience}
+                value={experience}
+                onChange={setExperience}
+                placeholder="Qualquer"
+              />
+            </div>
+
+            <div className="min-w-[140px] flex-1 space-y-1.5">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <Building className="h-3 w-3" />
+                Tempo na empresa
+              </label>
+              <MultiSelect
+                options={yearsAtCurrentCompany}
+                value={tenure}
+                onChange={setTenure}
+                placeholder="Qualquer"
+              />
+            </div>
+
+            <Button type="submit" disabled={isLoading} className="h-9 gap-2 px-5">
+              <Search className="h-3.5 w-3.5" />
+              {isLoading ? "Buscando..." : "Buscar"}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
