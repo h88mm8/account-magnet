@@ -1,12 +1,18 @@
 import { useState } from "react";
-import { Building2, MapPin, Users, BookmarkPlus, Bookmark, Factory } from "lucide-react";
+import { Building2, MapPin, Users, BookmarkPlus, Bookmark, Factory, MoreHorizontal } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { SaveToListModal } from "@/components/SaveToListModal";
-import { LeadMiniCard } from "@/components/LeadMiniCard";
+import { AccountDrawer } from "@/components/AccountDrawer";
 import { useProspectLists } from "@/hooks/useProspectLists";
 import { useAuth } from "@/contexts/AuthContext";
 import type { AccountResult } from "@/lib/api/unipile";
@@ -24,6 +30,8 @@ export function ResultsTable({ results, isLoading }: Props) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [modalOpen, setModalOpen] = useState(false);
   const [singleSaveIndex, setSingleSaveIndex] = useState<number | null>(null);
+  const [drawerAccount, setDrawerAccount] = useState<AccountResult | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const toggleSelect = (idx: number) => {
     setSelected((prev) => {
@@ -113,28 +121,22 @@ export function ResultsTable({ results, isLoading }: Props) {
                 return (
                   <TableRow
                     key={index}
-                    className="group border-b border-border transition-colors hover:bg-accent/50"
+                    className="group border-b border-border transition-colors hover:bg-accent/50 cursor-pointer"
+                    onClick={() => { setDrawerAccount(item); setDrawerOpen(true); }}
                   >
-                    <TableCell className="pl-5">
+                    <TableCell className="pl-5" onClick={(e) => e.stopPropagation()}>
                       <Checkbox checked={selected.has(index)} onCheckedChange={() => toggleSelect(index)} />
                     </TableCell>
                     <TableCell>
-                      <LeadMiniCard
-                        data={{ type: "account", name: displayName, industry: item.industry, location: item.location, headcount: item.employeeCount }}
-                        saved={saved}
-                        onSave={() => { setSingleSaveIndex(index); setModalOpen(true); }}
-                        showSaveButton={!!user}
-                      >
-                        <div className="flex items-center gap-3 cursor-pointer">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
-                            <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-sm font-medium text-foreground">{displayName}</span>
-                            {saved && <Bookmark className="h-3.5 w-3.5 fill-primary text-primary" />}
-                          </div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
+                          <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
                         </div>
-                      </LeadMiniCard>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm font-medium text-foreground">{displayName}</span>
+                          {saved && <Bookmark className="h-3.5 w-3.5 fill-primary text-primary" />}
+                        </div>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -154,17 +156,38 @@ export function ResultsTable({ results, isLoading }: Props) {
                         {item.employeeCount || FALLBACK}
                       </div>
                     </TableCell>
-                    <TableCell>
-                      {user && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground opacity-0 group-hover:opacity-100"
-                          onClick={() => { setSingleSaveIndex(index); setModalOpen(true); }}
-                        >
-                          <BookmarkPlus className="h-4 w-4" />
-                        </Button>
-                      )}
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-1">
+                        {user && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground opacity-0 group-hover:opacity-100"
+                            onClick={() => { setSingleSaveIndex(index); setModalOpen(true); }}
+                          >
+                            <BookmarkPlus className="h-4 w-4" />
+                          </Button>
+                        )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground opacity-0 group-hover:opacity-100">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {item.linkedinUrl && (
+                              <DropdownMenuItem asChild>
+                                <a href={item.linkedinUrl} target="_blank" rel="noopener noreferrer">
+                                  Ver no LinkedIn
+                                </a>
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onClick={() => { setDrawerAccount(item); setDrawerOpen(true); }}>
+                              Ver detalhes
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -173,6 +196,22 @@ export function ResultsTable({ results, isLoading }: Props) {
           </Table>
         </div>
       </Card>
+
+      {/* Account Drawer */}
+      <AccountDrawer
+        account={drawerAccount}
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        saved={drawerAccount ? isItemSaved("account", drawerAccount.linkedinUrl, drawerAccount.name) : false}
+        onSave={() => {
+          const idx = drawerAccount ? results.indexOf(drawerAccount) : -1;
+          if (idx >= 0) {
+            setSingleSaveIndex(idx);
+            setModalOpen(true);
+          }
+        }}
+        showSaveButton={!!user}
+      />
 
       <SaveToListModal
         open={modalOpen}
