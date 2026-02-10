@@ -39,7 +39,11 @@ export function SaveToListModal({ open, onOpenChange, items, lists, onSave, onCr
   const [newListName, setNewListName] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const listType = items[0]?.item_type === "lead" ? "leads" : items[0]?.item_type === "account" ? "accounts" : "mixed";
+  const itemType = items[0]?.item_type; // "lead" | "account"
+  const listType = itemType === "lead" ? "lead" : itemType === "account" ? "account" : "mixed";
+
+  // Filter lists to only show compatible ones
+  const compatibleLists = lists.filter((l) => l.list_type === listType || l.list_type === "mixed");
 
   const handleSave = async () => {
     setSaving(true);
@@ -110,14 +114,14 @@ export function SaveToListModal({ open, onOpenChange, items, lists, onSave, onCr
             </div>
           ) : (
             <div className="space-y-2">
-              {lists.length === 0 ? (
+              {compatibleLists.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4 text-center">
-                  Nenhuma lista criada. Crie uma nova lista primeiro.
+                  Nenhuma lista compatível ({listType === "lead" ? "de leads" : "de empresas"}). Crie uma nova.
                 </p>
               ) : (
                 <RadioGroup value={selectedListId} onValueChange={setSelectedListId}>
                   <div className="max-h-48 space-y-1 overflow-y-auto">
-                    {lists.map((list) => (
+                    {compatibleLists.map((list) => (
                       <label
                         key={list.id}
                         className="flex cursor-pointer items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-accent/50 has-[input:checked]:border-primary has-[input:checked]:bg-primary/5"
