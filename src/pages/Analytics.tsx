@@ -20,35 +20,21 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-
-const kpis = [
-  { label: "Empresas encontradas", value: "2,847", change: "+12.5%", icon: Building2 },
-  { label: "Contatos salvos", value: "1,234", change: "+8.2%", icon: Users },
-  { label: "Taxa de conversão", value: "3.2%", change: "+0.4%", icon: TrendingUp },
-  { label: "Listas ativas", value: "12", change: "—", icon: Target },
-];
-
-const lineData = [
-  { name: "Jan", empresas: 120, contatos: 80 },
-  { name: "Fev", empresas: 200, contatos: 150 },
-  { name: "Mar", empresas: 350, contatos: 280 },
-  { name: "Abr", empresas: 410, contatos: 320 },
-  { name: "Mai", empresas: 520, contatos: 400 },
-  { name: "Jun", empresas: 680, contatos: 510 },
-  { name: "Jul", empresas: 750, contatos: 600 },
-];
-
-const barData = [
-  { name: "TI", value: 420 },
-  { name: "Saúde", value: 310 },
-  { name: "Financeiro", value: 280 },
-  { name: "Educação", value: 190 },
-  { name: "Logística", value: 150 },
-  { name: "Varejo", value: 130 },
-];
+import { useRealMetrics, useMonthlyChartData, useIndustryChartData } from "@/hooks/useRealMetrics";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const Analytics = () => {
   const [period, setPeriod] = useState("7d");
+  const { data: metrics, isLoading: metricsLoading } = useRealMetrics();
+  const { data: monthlyData, isLoading: monthlyLoading } = useMonthlyChartData();
+  const { data: industryData, isLoading: industryLoading } = useIndustryChartData();
+
+  const kpis = [
+    { label: "Empresas salvas", value: metrics?.companiesSaved ?? 0, icon: Building2 },
+    { label: "Contatos salvos", value: metrics?.contactsSaved ?? 0, icon: Users },
+    { label: "Taxa de conversão", value: `${metrics?.conversionRate ?? 0}%`, icon: TrendingUp },
+    { label: "Listas ativas", value: metrics?.activeLists ?? 0, icon: Target },
+  ];
 
   return (
     <div className="space-y-6 p-6 lg:p-8">
@@ -87,10 +73,13 @@ const Analytics = () => {
                 <span className="text-sm text-muted-foreground">{kpi.label}</span>
                 <kpi.icon className="h-4 w-4 text-muted-foreground/50" />
               </div>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className="font-display text-2xl font-bold text-foreground">{kpi.value}</span>
-                {kpi.change !== "—" && (
-                  <span className="text-xs font-medium text-primary">{kpi.change}</span>
+              <div className="mt-2">
+                {metricsLoading ? (
+                  <Skeleton className="h-8 w-20" />
+                ) : (
+                  <span className="font-display text-2xl font-bold text-foreground">
+                    {kpi.value}
+                  </span>
                 )}
               </div>
             </CardContent>
@@ -107,23 +96,31 @@ const Analytics = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={lineData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="name" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
-                <YAxis className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "var(--radius)",
-                    color: "hsl(var(--foreground))",
-                  }}
-                />
-                <Line type="monotone" dataKey="empresas" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="contatos" stroke="hsl(var(--success))" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
+            {monthlyLoading ? (
+              <Skeleton className="h-[280px] w-full" />
+            ) : monthlyData && monthlyData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={280}>
+                <LineChart data={monthlyData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="month" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
+                  <YAxis className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--card))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "var(--radius)",
+                      color: "hsl(var(--foreground))",
+                    }}
+                  />
+                  <Line type="monotone" dataKey="empresas" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="contatos" stroke="hsl(var(--success))" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-[280px] items-center justify-center text-sm text-muted-foreground">
+                Nenhum dado disponível. Salve itens em listas para gerar o gráfico.
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -134,22 +131,30 @@ const Analytics = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={barData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="name" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
-                <YAxis className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "var(--radius)",
-                    color: "hsl(var(--foreground))",
-                  }}
-                />
-                <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {industryLoading ? (
+              <Skeleton className="h-[280px] w-full" />
+            ) : industryData && industryData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={industryData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="name" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
+                  <YAxis className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--card))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "var(--radius)",
+                      color: "hsl(var(--foreground))",
+                    }}
+                  />
+                  <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-[280px] items-center justify-center text-sm text-muted-foreground">
+                Nenhum dado disponível. Salve empresas em listas para gerar o gráfico.
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

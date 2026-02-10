@@ -37,5 +37,7 @@ export function normalizeLead(raw: Record<string, unknown>): LeadResult {
     location: String(raw.location || raw.geo_location || raw.geoLocation || raw.geography || raw.geo || ""),
     linkedinUrl: String(raw.profile_url || raw.linkedinUrl || raw.linkedin_url || raw.url || ""),
     profilePictureUrl: String(raw.profilePictureUrl || raw.profile_picture_url || raw.avatar_url || ""),
+    email: String(raw.email || raw.emailAddress || raw.email_address || (raw.contactInfo as any)?.email || "") || undefined,
+    phoneNumber: String(raw.phoneNumber || raw.phone_number || raw.phone || (raw.contactInfo as any)?.phoneNumber || "") || undefined,
   };
 }

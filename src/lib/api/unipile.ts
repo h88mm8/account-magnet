@@ -41,6 +41,8 @@ export type LeadResult = {
   location: string;
   linkedinUrl: string;
   profilePictureUrl?: string;
+  email?: string;
+  phoneNumber?: string;
 };
 
 // ── Pagination ───────────────────────────────────────────────────────
