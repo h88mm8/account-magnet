@@ -4,7 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -150,6 +150,9 @@ export function LeadResultsTable({ results, isLoading }: Props) {
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <Avatar className="h-9 w-9">
+                          {item.profilePictureUrl && (
+                            <AvatarImage src={item.profilePictureUrl} alt={fullName} />
+                          )}
                           <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
                             {initials}
                           </AvatarFallback>
