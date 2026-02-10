@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { normalizeAccount, normalizeLead } from "@/lib/normalize";
 
 // ── Account types ────────────────────────────────────────────────────
 
@@ -67,7 +68,10 @@ export async function searchAccounts(
     throw new Error(error.message || "Erro ao buscar empresas");
   }
 
-  return data;
+  return {
+    ...data,
+    items: (data.items || []).map((item: Record<string, unknown>) => normalizeAccount(item)),
+  };
 }
 
 export async function searchLeads(
@@ -82,5 +86,8 @@ export async function searchLeads(
     throw new Error(error.message || "Erro ao buscar leads");
   }
 
-  return data;
+  return {
+    ...data,
+    items: (data.items || []).map((item: Record<string, unknown>) => normalizeLead(item)),
+  };
 }

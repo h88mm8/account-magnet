@@ -348,24 +348,32 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Normalize response
+    // Log raw first item for field diagnosis
+    if ((data.items || []).length > 0) {
+      console.log(`[DIAG] Raw first ${searchType} item:`, JSON.stringify(data.items[0]));
+    }
+
+    // Normalize response with expanded fallbacks
     let items;
     if (isLeads) {
-      items = (data.items || []).map((item: Record<string, unknown>) => ({
-        firstName: item.first_name || item.firstName || "",
-        lastName: item.last_name || item.lastName || "",
-        title: item.title || item.headline || "",
-        company: item.company || item.current_company || "",
-        location: item.location || "",
-        linkedinUrl: item.linkedinUrl || item.linkedin_url || item.url || "",
-      }));
+      items = (data.items || []).map((item: Record<string, unknown>) => {
+        const currentCompany = item.currentCompany as Record<string, unknown> | undefined;
+        return {
+          firstName: item.first_name || item.firstName || item.firstNameInitial || "",
+          lastName: item.last_name || item.lastName || item.lastNameInitial || "",
+          title: item.title || item.headline || item.current_role || item.position || item.occupation || "",
+          company: item.company || item.current_company || item.company_name || item.companyName || currentCompany?.name || "",
+          location: item.location || item.geo_location || item.geoLocation || item.geography || item.geo || item.region || "",
+          linkedinUrl: item.linkedinUrl || item.linkedin_url || item.url || item.profile_url || item.publicProfileUrl || "",
+        };
+      });
     } else {
       items = (data.items || []).map((item: Record<string, unknown>) => ({
-        name: item.name || item.title || "",
-        industry: item.industry || "",
-        location: item.location || item.headquarters || "",
-        employeeCount: item.employeeCount || item.employee_count || item.size || "",
-        linkedinUrl: item.linkedinUrl || item.linkedin_url || item.url || "",
+        name: item.name || item.title || item.company_name || item.companyName || "",
+        industry: item.industry || item.sector || item.vertical || "",
+        location: item.location || item.headquarters || item.geography || item.geo || item.region || item.hqLocation || "",
+        employeeCount: item.employeeCount || item.employee_count || item.size || item.staff_count || item.company_headcount || item.headcount || item.staffCount || item.companySize || "",
+        linkedinUrl: item.linkedinUrl || item.linkedin_url || item.url || item.profile_url || item.publicProfileUrl || "",
       }));
     }
 
