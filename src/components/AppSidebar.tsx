@@ -1,4 +1,4 @@
-import { Search, Building2, Users, BarChart3, Settings, HelpCircle, Compass } from "lucide-react";
+import { Search, Building2, Users, BarChart3, Settings, HelpCircle, Compass, List } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
   Sidebar,
@@ -16,6 +16,7 @@ const mainNav = [
   { title: "Discover", url: "/", icon: Compass },
   { title: "Empresas", url: "/companies", icon: Building2 },
   { title: "Contatos", url: "/contacts", icon: Users },
+  { title: "Listas", url: "/lists", icon: List },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
 ];
 
