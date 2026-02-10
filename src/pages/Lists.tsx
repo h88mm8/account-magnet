@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { List, Trash2, Pencil, Search, ChevronRight, Building2, User, X, MapPin, Briefcase, Users, Factory } from "lucide-react";
+import { List, Trash2, Pencil, Search, ChevronRight, Building2, User, X, MapPin, Briefcase, Users, Factory, UserCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -220,7 +220,13 @@ export default function Lists() {
             >
               <div className="flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-                  <List className="h-4 w-4 text-primary" />
+                  {list.list_type === "lead" ? (
+                    <UserCircle className="h-4 w-4 text-primary" />
+                  ) : list.list_type === "account" ? (
+                    <Building2 className="h-4 w-4 text-primary" />
+                  ) : (
+                    <List className="h-4 w-4 text-primary" />
+                  )}
                 </div>
                 <div>
                   {editingId === list.id ? (
@@ -234,7 +240,12 @@ export default function Lists() {
                       className="h-7 text-sm"
                     />
                   ) : (
-                    <p className="text-sm font-medium text-foreground">{list.name}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-foreground">{list.name}</p>
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                        {list.list_type === "lead" ? "Leads" : list.list_type === "account" ? "Empresas" : "Misto"}
+                      </Badge>
+                    </div>
                   )}
                   <p className="text-xs text-muted-foreground">
                     {list.item_count ?? 0} itens · {new Date(list.created_at).toLocaleDateString("pt-BR")}

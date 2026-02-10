@@ -141,7 +141,7 @@ export function useProspectLists() {
     }
   };
 
-  const getListItems = async (listId: string) => {
+  const getListItems = useCallback(async (listId: string) => {
     const { data, error } = await supabase
       .from("prospect_list_items")
       .select("*")
@@ -152,7 +152,7 @@ export function useProspectLists() {
       return [];
     }
     return data as ProspectListItem[];
-  };
+  }, []);
 
   const removeItem = async (itemId: string) => {
     const { error } = await supabase.from("prospect_list_items").delete().eq("id", itemId);
