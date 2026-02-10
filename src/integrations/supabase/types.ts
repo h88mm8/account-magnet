@@ -14,7 +14,122 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          full_name: string | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      prospect_list_items: {
+        Row: {
+          company: string | null
+          created_at: string
+          external_id: string | null
+          headcount: string | null
+          id: string
+          industry: string | null
+          item_type: string
+          linkedin_url: string | null
+          list_id: string
+          location: string | null
+          name: string
+          raw_data: Json | null
+          title: string | null
+          user_id: string
+        }
+        Insert: {
+          company?: string | null
+          created_at?: string
+          external_id?: string | null
+          headcount?: string | null
+          id?: string
+          industry?: string | null
+          item_type: string
+          linkedin_url?: string | null
+          list_id: string
+          location?: string | null
+          name: string
+          raw_data?: Json | null
+          title?: string | null
+          user_id: string
+        }
+        Update: {
+          company?: string | null
+          created_at?: string
+          external_id?: string | null
+          headcount?: string | null
+          id?: string
+          industry?: string | null
+          item_type?: string
+          linkedin_url?: string | null
+          list_id?: string
+          location?: string | null
+          name?: string
+          raw_data?: Json | null
+          title?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prospect_list_items_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "prospect_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prospect_lists: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          list_type: string
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          list_type?: string
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          list_type?: string
+          name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
