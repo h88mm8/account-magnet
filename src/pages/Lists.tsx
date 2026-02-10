@@ -220,9 +220,9 @@ export default function Lists() {
             >
               <div className="flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-                  {list.list_type === "lead" ? (
+                  {list.list_type === "leads" ? (
                     <UserCircle className="h-4 w-4 text-primary" />
-                  ) : list.list_type === "account" ? (
+                  ) : list.list_type === "accounts" ? (
                     <Building2 className="h-4 w-4 text-primary" />
                   ) : (
                     <List className="h-4 w-4 text-primary" />
@@ -243,7 +243,7 @@ export default function Lists() {
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium text-foreground">{list.name}</p>
                       <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                        {list.list_type === "lead" ? "Leads" : list.list_type === "account" ? "Empresas" : "Misto"}
+                        {list.list_type === "leads" ? "Leads" : list.list_type === "accounts" ? "Empresas" : "Misto"}
                       </Badge>
                     </div>
                   )}

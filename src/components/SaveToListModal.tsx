@@ -40,7 +40,7 @@ export function SaveToListModal({ open, onOpenChange, items, lists, onSave, onCr
   const [saving, setSaving] = useState(false);
 
   const itemType = items[0]?.item_type; // "lead" | "account"
-  const listType = itemType === "lead" ? "lead" : itemType === "account" ? "account" : "mixed";
+  const listType = itemType === "lead" ? "leads" : itemType === "account" ? "accounts" : "mixed";
 
   // Filter lists to only show compatible ones
   const compatibleLists = lists.filter((l) => l.list_type === listType || l.list_type === "mixed");
@@ -116,7 +116,7 @@ export function SaveToListModal({ open, onOpenChange, items, lists, onSave, onCr
             <div className="space-y-2">
               {compatibleLists.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4 text-center">
-                  Nenhuma lista compatível ({listType === "lead" ? "de leads" : "de empresas"}). Crie uma nova.
+                  Nenhuma lista compatível ({listType === "leads" ? "de leads" : "de empresas"}). Crie uma nova.
                 </p>
               ) : (
                 <RadioGroup value={selectedListId} onValueChange={setSelectedListId}>
