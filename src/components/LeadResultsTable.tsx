@@ -1,11 +1,18 @@
 import { useState } from "react";
-import { User, MapPin, Briefcase, BookmarkPlus, Bookmark } from "lucide-react";
+import { User, MapPin, Building2, BookmarkPlus, Bookmark, MoreHorizontal } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { SaveToListModal } from "@/components/SaveToListModal";
-import { LeadMiniCard } from "@/components/LeadMiniCard";
+import { LeadDrawer } from "@/components/LeadDrawer";
 import { useProspectLists } from "@/hooks/useProspectLists";
 import { useAuth } from "@/contexts/AuthContext";
 import type { LeadResult } from "@/lib/api/unipile";
@@ -23,6 +30,8 @@ export function LeadResultsTable({ results, isLoading }: Props) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [modalOpen, setModalOpen] = useState(false);
   const [singleSaveIndex, setSingleSaveIndex] = useState<number | null>(null);
+  const [drawerLead, setDrawerLead] = useState<LeadResult | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const toggleSelect = (idx: number) => {
     setSelected((prev) => {
@@ -55,6 +64,17 @@ export function LeadResultsTable({ results, isLoading }: Props) {
     });
   };
 
+  const getFullName = (item: LeadResult) =>
+    [item.firstName, item.lastName].filter(Boolean).join(" ") || "Desconhecido";
+
+  const getInitials = (item: LeadResult) =>
+    [item.firstName?.[0], item.lastName?.[0]].filter(Boolean).join("").toUpperCase() || "?";
+
+  const openDrawer = (lead: LeadResult) => {
+    setDrawerLead(lead);
+    setDrawerOpen(true);
+  };
+
   if (isLoading) {
     return (
       <Card className="flex flex-col items-center justify-center gap-4 border border-border p-16 shadow-none">
@@ -72,6 +92,9 @@ export function LeadResultsTable({ results, isLoading }: Props) {
       </Card>
     );
   }
+
+  const drawerFullName = drawerLead ? getFullName(drawerLead) : "";
+  const drawerSaved = drawerLead ? isItemSaved("lead", drawerLead.linkedinUrl, drawerFullName) : false;
 
   return (
     <>
@@ -101,68 +124,100 @@ export function LeadResultsTable({ results, isLoading }: Props) {
                 <TableHead className="w-10 pl-5">
                   <Checkbox checked={selected.size === results.length && results.length > 0} onCheckedChange={toggleAll} />
                 </TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Nome</TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cargo</TableHead>
+                <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Lead</TableHead>
                 <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Empresa</TableHead>
                 <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Localização</TableHead>
-                <TableHead className="w-10" />
+                <TableHead className="w-24 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-center">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {results.map((item, index) => {
-                const fullName = [item.firstName, item.lastName].filter(Boolean).join(" ") || "Desconhecido";
+                const fullName = getFullName(item);
+                const initials = getInitials(item);
                 const saved = isItemSaved("lead", item.linkedinUrl, fullName);
+
                 return (
-                  <TableRow key={index} className="group border-b border-border transition-colors hover:bg-accent/50">
-                    <TableCell className="pl-5">
+                  <TableRow
+                    key={index}
+                    className="group border-b border-border transition-colors hover:bg-accent/50 cursor-pointer"
+                    onClick={() => openDrawer(item)}
+                  >
+                    <TableCell className="pl-5" onClick={(e) => e.stopPropagation()}>
                       <Checkbox checked={selected.has(index)} onCheckedChange={() => toggleSelect(index)} />
                     </TableCell>
+
+                    {/* Lead: Avatar + Name + Title */}
                     <TableCell>
-                      <LeadMiniCard
-                        data={{ type: "lead", name: fullName, title: item.title, company: item.company, location: item.location }}
-                        saved={saved}
-                        onSave={() => { setSingleSaveIndex(index); setModalOpen(true); }}
-                        showSaveButton={!!user}
-                      >
-                        <div className="flex items-center gap-3 cursor-pointer">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted">
-                            <User className="h-3.5 w-3.5 text-muted-foreground" />
-                          </div>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-9 w-9">
+                          <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                            {initials}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-sm font-medium text-foreground">{fullName}</span>
-                            {saved && <Bookmark className="h-3.5 w-3.5 fill-primary text-primary" />}
+                            <span className="text-sm font-medium text-foreground truncate">{fullName}</span>
+                            {saved && <Bookmark className="h-3.5 w-3.5 shrink-0 fill-primary text-primary" />}
                           </div>
+                          <p className="text-xs text-muted-foreground truncate">{item.title || FALLBACK}</p>
                         </div>
-                      </LeadMiniCard>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-muted-foreground">
-                        {item.title || FALLBACK}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                        <Briefcase className="h-3 w-3 shrink-0" />
-                        {item.company || FALLBACK}
                       </div>
                     </TableCell>
+
+                    {/* Company */}
                     <TableCell>
                       <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                        <MapPin className="h-3 w-3 shrink-0" />
-                        {item.location || FALLBACK}
+                        <Building2 className="h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate">{item.company || FALLBACK}</span>
                       </div>
                     </TableCell>
+
+                    {/* Location */}
                     <TableCell>
-                      {user && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground opacity-0 group-hover:opacity-100"
-                          onClick={() => { setSingleSaveIndex(index); setModalOpen(true); }}
-                        >
-                          <BookmarkPlus className="h-4 w-4" />
-                        </Button>
-                      )}
+                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <MapPin className="h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate">{item.location || FALLBACK}</span>
+                      </div>
+                    </TableCell>
+
+                    {/* Actions */}
+                    <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-center gap-1">
+                        {user && (
+                          <Button
+                            variant={saved ? "ghost" : "outline"}
+                            size="sm"
+                            className="h-7 gap-1 text-xs"
+                            onClick={() => { setSingleSaveIndex(index); setModalOpen(true); }}
+                            disabled={saved}
+                          >
+                            {saved ? (
+                              <Bookmark className="h-3.5 w-3.5 fill-primary text-primary" />
+                            ) : (
+                              <><BookmarkPlus className="h-3.5 w-3.5" /> Salvar</>
+                            )}
+                          </Button>
+                        )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {item.linkedinUrl && (
+                              <DropdownMenuItem asChild>
+                                <a href={item.linkedinUrl} target="_blank" rel="noopener noreferrer">
+                                  Ver no LinkedIn
+                                </a>
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onClick={() => openDrawer(item)}>
+                              Ver detalhes
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -171,6 +226,22 @@ export function LeadResultsTable({ results, isLoading }: Props) {
           </Table>
         </div>
       </Card>
+
+      {/* Lead Drawer */}
+      <LeadDrawer
+        lead={drawerLead}
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        saved={drawerSaved}
+        onSave={() => {
+          const idx = drawerLead ? results.indexOf(drawerLead) : -1;
+          if (idx >= 0) {
+            setSingleSaveIndex(idx);
+            setModalOpen(true);
+          }
+        }}
+        showSaveButton={!!user}
+      />
 
       <SaveToListModal
         open={modalOpen}
