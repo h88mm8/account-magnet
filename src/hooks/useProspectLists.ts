@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 
 export type ProspectList = {
   id: string;
@@ -31,9 +32,16 @@ export type ProspectListItem = {
 export function useProspectLists() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [lists, setLists] = useState<ProspectList[]>([]);
   const [loading, setLoading] = useState(false);
   const [savedItemKeys, setSavedItemKeys] = useState<Set<string>>(new Set());
+
+  const invalidateMetrics = () => {
+    queryClient.invalidateQueries({ queryKey: ["real-metrics"] });
+    queryClient.invalidateQueries({ queryKey: ["monthly-chart-data"] });
+    queryClient.invalidateQueries({ queryKey: ["industry-chart-data"] });
+  };
 
   const fetchLists = useCallback(async () => {
     if (!user) return;
@@ -89,6 +97,7 @@ export function useProspectLists() {
       return null;
     }
     await fetchLists();
+    invalidateMetrics();
     return data;
   };
 
@@ -100,6 +109,7 @@ export function useProspectLists() {
       toast({ title: "Lista excluída" });
       await fetchLists();
       await fetchSavedItemKeys();
+      invalidateMetrics();
     }
   };
 
@@ -138,6 +148,7 @@ export function useProspectLists() {
       toast({ title: `${items.length} item(s) salvo(s) na lista!` });
       await fetchLists();
       await fetchSavedItemKeys();
+      invalidateMetrics();
     }
   };
 
@@ -161,6 +172,7 @@ export function useProspectLists() {
     } else {
       await fetchLists();
       await fetchSavedItemKeys();
+      invalidateMetrics();
     }
   };
 

@@ -1,4 +1,4 @@
-import { User, MapPin, Briefcase, Building2, BookmarkPlus, Bookmark, MessageSquare, ExternalLink } from "lucide-react";
+import { User, MapPin, Briefcase, Building2, BookmarkPlus, Bookmark, MessageSquare, ExternalLink, Mail, Phone } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -110,6 +110,28 @@ export function LeadDrawer({ lead, open, onOpenChange, saved, onSave, showSaveBu
                 <div>
                   <p className="text-sm font-medium text-foreground">{lead.location || FALLBACK}</p>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+              Contato
+            </h3>
+            <div className="space-y-3">
+              <div className="flex items-start gap-3">
+                <Mail className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                <p className="text-sm font-medium text-foreground">
+                  {lead.email || "Não disponível"}
+                </p>
+              </div>
+              <div className="flex items-start gap-3">
+                <Phone className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                <p className="text-sm font-medium text-foreground">
+                  {lead.phoneNumber || "Não disponível"}
+                </p>
               </div>
             </div>
           </div>
