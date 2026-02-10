@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { User, MapPin, Briefcase, BookmarkPlus, Bookmark } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SaveToListModal } from "@/components/SaveToListModal";
+import { LeadMiniCard } from "@/components/LeadMiniCard";
 import { useProspectLists } from "@/hooks/useProspectLists";
 import { useAuth } from "@/contexts/AuthContext";
 import type { LeadResult } from "@/lib/api/unipile";
+
+const FALLBACK = "Não informado";
 
 type Props = {
   results: LeadResult[];
@@ -116,40 +118,39 @@ export function LeadResultsTable({ results, isLoading }: Props) {
                       <Checkbox checked={selected.has(index)} onCheckedChange={() => toggleSelect(index)} />
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted">
-                          <User className="h-3.5 w-3.5 text-muted-foreground" />
+                      <LeadMiniCard
+                        data={{ type: "lead", name: fullName, title: item.title, company: item.company, location: item.location }}
+                        saved={saved}
+                        onSave={() => { setSingleSaveIndex(index); setModalOpen(true); }}
+                        showSaveButton={!!user}
+                      >
+                        <div className="flex items-center gap-3 cursor-pointer">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted">
+                            <User className="h-3.5 w-3.5 text-muted-foreground" />
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-medium text-foreground">{fullName}</span>
+                            {saved && <Bookmark className="h-3.5 w-3.5 fill-primary text-primary" />}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-sm font-medium text-foreground">{fullName}</span>
-                          {saved && <Bookmark className="h-3.5 w-3.5 fill-primary text-primary" />}
-                        </div>
+                      </LeadMiniCard>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm text-muted-foreground">
+                        {item.title || FALLBACK}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <Briefcase className="h-3 w-3 shrink-0" />
+                        {item.company || FALLBACK}
                       </div>
                     </TableCell>
                     <TableCell>
-                      {item.title ? (
-                        <Badge variant="secondary" className="font-normal text-xs">{item.title}</Badge>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {item.company ? (
-                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                          <Briefcase className="h-3 w-3" />{item.company}
-                        </div>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {item.location ? (
-                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                          <MapPin className="h-3 w-3" />{item.location}
-                        </div>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">—</span>
-                      )}
+                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <MapPin className="h-3 w-3 shrink-0" />
+                        {item.location || FALLBACK}
+                      </div>
                     </TableCell>
                     <TableCell>
                       {user && (

@@ -1,10 +1,13 @@
 import { useState, useEffect } from "react";
-import { List, Trash2, Pencil, Search, ChevronRight, Building2, User, X } from "lucide-react";
+import { List, Trash2, Pencil, Search, ChevronRight, Building2, User, X, MapPin, Briefcase, Users, Factory } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { LeadMiniCard } from "@/components/LeadMiniCard";
+
+const FALLBACK = "Não informado";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -107,35 +110,79 @@ export default function Lists() {
                   <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cargo / Setor</TableHead>
                   <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Empresa</TableHead>
                   <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Localização</TableHead>
+                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Funcionários</TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredItems.map((item) => (
-                  <TableRow key={item.id} className="group">
-                    <TableCell>
-                      {item.item_type === "lead" ? (
-                        <Badge variant="secondary" className="gap-1 text-xs"><User className="h-3 w-3" />Lead</Badge>
-                      ) : (
-                        <Badge variant="secondary" className="gap-1 text-xs"><Building2 className="h-3 w-3" />Empresa</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="font-medium text-foreground">{item.name}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{item.title || item.industry || "—"}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{item.company || "—"}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{item.location || "—"}</TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground opacity-0 group-hover:opacity-100"
-                        onClick={() => handleRemoveItem(item.id)}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {filteredItems.map((item) => {
+                  const isLead = item.item_type === "lead";
+                  return (
+                    <TableRow key={item.id} className="group">
+                      <TableCell>
+                        {isLead ? (
+                          <Badge variant="secondary" className="gap-1 text-xs"><User className="h-3 w-3" />Lead</Badge>
+                        ) : (
+                          <Badge variant="secondary" className="gap-1 text-xs"><Building2 className="h-3 w-3" />Empresa</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <LeadMiniCard
+                          data={{
+                            type: isLead ? "lead" : "account",
+                            name: item.name,
+                            title: item.title,
+                            company: item.company,
+                            location: item.location,
+                            industry: item.industry,
+                            headcount: item.headcount,
+                          }}
+                          showSaveButton={false}
+                        >
+                          <div className="flex items-center gap-2 cursor-pointer">
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted">
+                              {isLead ? <User className="h-3 w-3 text-muted-foreground" /> : <Building2 className="h-3 w-3 text-muted-foreground" />}
+                            </div>
+                            <span className="text-sm font-medium text-foreground">{item.name}</span>
+                          </div>
+                        </LeadMiniCard>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm text-muted-foreground">
+                          {isLead ? (item.title || FALLBACK) : (item.industry || FALLBACK)}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                          {isLead ? <Briefcase className="h-3 w-3 shrink-0" /> : <Building2 className="h-3 w-3 shrink-0" />}
+                          {item.company || (isLead ? FALLBACK : "—")}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                          <MapPin className="h-3 w-3 shrink-0" />
+                          {item.location || FALLBACK}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                          <Users className="h-3 w-3 shrink-0" />
+                          {item.headcount || FALLBACK}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground opacity-0 group-hover:opacity-100"
+                          onClick={() => handleRemoveItem(item.id)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </Card>
