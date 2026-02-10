@@ -3,7 +3,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import type { LeadResult } from "@/lib/api/unipile";
 
 const FALLBACK = "Não informado";
@@ -35,6 +35,9 @@ export function LeadDrawer({ lead, open, onOpenChange, saved, onSave, showSaveBu
         <div className="p-6 pb-4">
           <div className="flex items-start gap-4">
             <Avatar className="h-16 w-16 text-lg">
+              {lead.profilePictureUrl && (
+                <AvatarImage src={lead.profilePictureUrl} alt={fullName} />
+              )}
               <AvatarFallback className="bg-primary/10 text-primary font-semibold text-lg">
                 {initials}
               </AvatarFallback>

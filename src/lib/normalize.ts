@@ -22,13 +22,15 @@ export function normalizeAccount(raw: Record<string, unknown>): AccountResult {
  * Acts as a safety layer after backend normalization.
  */
 export function normalizeLead(raw: Record<string, unknown>): LeadResult {
-  const currentCompany = raw.currentCompany as Record<string, unknown> | undefined;
+  const currentPositions = raw.current_positions as Array<Record<string, unknown>> | undefined;
+  const firstPosition = currentPositions?.[0];
   return {
     firstName: String(raw.firstName || raw.first_name || ""),
     lastName: String(raw.lastName || raw.last_name || ""),
-    title: String(raw.title || raw.headline || raw.current_role || raw.position || raw.occupation || ""),
-    company: String(raw.company || raw.current_company || raw.company_name || raw.companyName || currentCompany?.name || ""),
+    title: String(firstPosition?.role || raw.title || raw.headline || raw.current_role || raw.position || raw.occupation || ""),
+    company: String(firstPosition?.company || raw.company || raw.current_company || raw.company_name || raw.companyName || ""),
     location: String(raw.location || raw.geo_location || raw.geoLocation || raw.geography || raw.geo || ""),
-    linkedinUrl: String(raw.linkedinUrl || raw.linkedin_url || raw.url || ""),
+    linkedinUrl: String(raw.profile_url || raw.linkedinUrl || raw.linkedin_url || raw.url || ""),
+    profilePictureUrl: String(raw.profilePictureUrl || raw.profile_picture_url || raw.avatar_url || ""),
   };
 }

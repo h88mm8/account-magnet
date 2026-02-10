@@ -357,14 +357,23 @@ Deno.serve(async (req) => {
     let items;
     if (isLeads) {
       items = (data.items || []).map((item: Record<string, unknown>) => {
-        const currentCompany = item.currentCompany as Record<string, unknown> | undefined;
+        // Extract company from current_positions array (actual Unipile structure)
+        const currentPositions = item.current_positions as Array<Record<string, unknown>> | undefined;
+        const firstPosition = currentPositions?.[0];
+        const company = firstPosition?.company
+          || item.company || item.current_company || item.company_name || item.companyName || "";
+
+        // Extract role from current_positions if available
+        const role = firstPosition?.role || "";
+
         return {
-          firstName: item.first_name || item.firstName || item.firstNameInitial || "",
-          lastName: item.last_name || item.lastName || item.lastNameInitial || "",
-          title: item.title || item.headline || item.current_role || item.position || item.occupation || "",
-          company: item.company || item.current_company || item.company_name || item.companyName || currentCompany?.name || "",
+          firstName: item.first_name || item.firstName || "",
+          lastName: item.last_name || item.lastName || "",
+          title: role || item.headline || item.title || item.current_role || item.position || item.occupation || "",
+          company: company,
           location: item.location || item.geo_location || item.geoLocation || item.geography || item.geo || item.region || "",
-          linkedinUrl: item.linkedinUrl || item.linkedin_url || item.url || item.profile_url || item.publicProfileUrl || "",
+          linkedinUrl: item.profile_url || item.linkedinUrl || item.linkedin_url || item.url || item.publicProfileUrl || "",
+          profilePictureUrl: item.profile_picture_url || item.profilePictureUrl || item.avatar_url || "",
         };
       });
     } else {
