@@ -380,9 +380,12 @@ Deno.serve(async (req) => {
       items = (data.items || []).map((item: Record<string, unknown>) => ({
         name: item.name || item.title || item.company_name || item.companyName || "",
         industry: item.industry || item.sector || item.vertical || "",
-        location: item.location || item.headquarters || item.geography || item.geo || item.region || item.hqLocation || "",
+        location: item.location || item.headquarters || item.hq_location || item.headquarter ||
+          item.company_location || item.companyLocation || item.geography || item.geo ||
+          item.region || item.hqLocation || item.address || "",
         employeeCount: item.employeeCount || item.employee_count || item.size || item.staff_count || item.company_headcount || item.headcount || item.staffCount || item.companySize || "",
         linkedinUrl: item.linkedinUrl || item.linkedin_url || item.url || item.profile_url || item.publicProfileUrl || "",
+        revenue: item.revenue || item.annual_revenue || item.annualRevenue || "",
       }));
     }
 

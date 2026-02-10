@@ -17,6 +17,7 @@ export type AccountResult = {
   location: string;
   employeeCount: string;
   linkedinUrl: string;
+  revenue?: string;
 };
 
 // ── Lead types ───────────────────────────────────────────────────────
