@@ -270,51 +270,58 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const {
-      // Common
-      searchType = "accounts", // "accounts" | "leads"
-      page = 1,
-      // Account filters
-      keywords,
-      revenue,
-      location,
-      industry,
-      companySize,
-      // Lead filters
-      seniority,
-      jobFunction,
-      yearsOfExperience,
-      yearsAtCurrentCompany,
-    } = body;
+    const { cursor } = body;
 
-    const isLeads = searchType === "leads";
+    // ── Cursor-based pagination: if cursor present, send ONLY the cursor ──
+    let unipileBody: Record<string, unknown>;
 
-    const searchUrl = isLeads
-      ? buildSalesNavLeadUrl({
-          keywords,
-          seniority,
-          jobFunction,
-          industry,
-          location,
-          companySize,
-          yearsOfExperience,
-          yearsAtCurrentCompany,
-        })
-      : buildSalesNavAccountUrl({
-          keywords,
-          companySize,
-          revenue,
-          industry,
-          location,
-        });
+    if (cursor) {
+      console.log("[PAGINATION] Using cursor:", cursor);
+      unipileBody = { cursor };
+    } else {
+      // First page: build URL from filters
+      const {
+        searchType = "accounts",
+        keywords,
+        revenue,
+        location,
+        industry,
+        companySize,
+        seniority,
+        jobFunction,
+        yearsOfExperience,
+        yearsAtCurrentCompany,
+      } = body;
 
-    // Append page parameter to URL for pagination
-    const paginatedUrl =
-      page > 1
-        ? `${searchUrl}${searchUrl.includes("?") ? "&" : "?"}page=${page}`
-        : searchUrl;
+      const isLeads = searchType === "leads";
 
-    console.log(`Sales Navigator URL (${searchType}, page ${page}):`, paginatedUrl);
+      const searchUrl = isLeads
+        ? buildSalesNavLeadUrl({
+            keywords,
+            seniority,
+            jobFunction,
+            industry,
+            location,
+            companySize,
+            yearsOfExperience,
+            yearsAtCurrentCompany,
+          })
+        : buildSalesNavAccountUrl({
+            keywords,
+            companySize,
+            revenue,
+            industry,
+            location,
+          });
+
+      console.log(`[SEARCH] Sales Navigator URL (${searchType}):`, searchUrl);
+
+      unipileBody = {
+        api: "sales_navigator",
+        category: isLeads ? "people" : "companies",
+        url: searchUrl,
+      };
+    }
 
     const unipileUrl = `${baseUrl}/api/v1/linkedin/search?account_id=${encodeURIComponent(accountId)}`;
 
@@ -325,11 +332,7 @@ Deno.serve(async (req) => {
         accept: "application/json",
         "content-type": "application/json",
       },
-      body: JSON.stringify({
-        api: "sales_navigator",
-        category: isLeads ? "people" : "companies",
-        url: paginatedUrl,
-      }),
+      body: JSON.stringify(unipileBody),
     });
 
     const data = await response.json();
@@ -348,22 +351,28 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Log paging and cursor info
+    const paging = data.paging || {};
+    const nextCursor = data.cursor || null;
+    console.log("[PAGINATION] paging:", JSON.stringify(paging), "cursor:", nextCursor);
+
     // Log raw first item for field diagnosis
     if ((data.items || []).length > 0) {
-      console.log(`[DIAG] Raw first ${searchType} item:`, JSON.stringify(data.items[0]));
+      console.log(`[DIAG] Raw first item:`, JSON.stringify(data.items[0]));
     }
+
+    // Determine searchType: from body or infer from cursor response
+    const searchType = body.searchType || (cursor ? inferSearchType(data.items) : "accounts");
 
     // Normalize response with expanded fallbacks
     let items;
-    if (isLeads) {
+    if (searchType === "leads") {
       items = (data.items || []).map((item: Record<string, unknown>) => {
-        // Extract company from current_positions array (actual Unipile structure)
         const currentPositions = item.current_positions as Array<Record<string, unknown>> | undefined;
         const firstPosition = currentPositions?.[0];
         const company = firstPosition?.company
           || item.company || item.current_company || item.company_name || item.companyName || "";
 
-        // Extract role from current_positions if available
         const role = firstPosition?.role || "";
 
         return {
@@ -374,6 +383,10 @@ Deno.serve(async (req) => {
           location: item.location || item.geo_location || item.geoLocation || item.geography || item.geo || item.region || "",
           linkedinUrl: item.profile_url || item.linkedinUrl || item.linkedin_url || item.url || item.publicProfileUrl || "",
           profilePictureUrl: item.profile_picture_url || item.profilePictureUrl || item.avatar_url || "",
+          email: item.email || item.emailAddress || item.email_address ||
+            (item.contactInfo as Record<string, unknown>)?.email || "",
+          phoneNumber: item.phoneNumber || item.phone_number || item.phone ||
+            (item.contactInfo as Record<string, unknown>)?.phone || "",
         };
       });
     } else {
@@ -392,10 +405,11 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         items,
-        pagination: {
-          page,
-          hasMore: (data.items || []).length >= 25,
-          totalEstimate: data.total || null,
+        cursor: nextCursor,
+        paging: {
+          start: paging.start ?? 0,
+          count: (data.items || []).length,
+          total: paging.total_count ?? paging.total ?? null,
         },
       }),
       {
@@ -415,3 +429,12 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+// Helper to infer search type when using cursor (no searchType in body)
+function inferSearchType(items: Record<string, unknown>[]): string {
+  if (!items || items.length === 0) return "accounts";
+  const first = items[0];
+  // People results typically have first_name or firstName
+  if (first.first_name || first.firstName || first.last_name || first.lastName) return "leads";
+  return "accounts";
+}

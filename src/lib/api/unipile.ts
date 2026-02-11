@@ -47,12 +47,25 @@ export type LeadResult = {
 
 // ── Pagination ───────────────────────────────────────────────────────
 
+export type PagingInfo = {
+  start: number;
+  count: number;
+  total: number | null;
+};
+
 export type PaginationInfo = {
   page: number;
   hasMore: boolean;
   totalEstimate: number | null;
 };
 
+export type CursorSearchResponse<T> = {
+  items: T[];
+  cursor: string | null;
+  paging: PagingInfo;
+};
+
+// Keep legacy type for compatibility
 export type SearchResponse<T> = {
   items: T[];
   pagination: PaginationInfo;
@@ -62,10 +75,14 @@ export type SearchResponse<T> = {
 
 export async function searchAccounts(
   filters: AccountSearchFilters,
-  page = 1
-): Promise<SearchResponse<AccountResult>> {
+  cursor?: string | null
+): Promise<CursorSearchResponse<AccountResult>> {
+  const body = cursor
+    ? { cursor }
+    : { ...filters, searchType: "accounts" };
+
   const { data, error } = await supabase.functions.invoke("unipile-search", {
-    body: { ...filters, searchType: "accounts", page },
+    body,
   });
 
   if (error) {
@@ -73,17 +90,22 @@ export async function searchAccounts(
   }
 
   return {
-    ...data,
     items: (data.items || []).map((item: Record<string, unknown>) => normalizeAccount(item)),
+    cursor: data.cursor || null,
+    paging: data.paging || { start: 0, count: 0, total: null },
   };
 }
 
 export async function searchLeads(
   filters: LeadSearchFilters,
-  page = 1
-): Promise<SearchResponse<LeadResult>> {
+  cursor?: string | null
+): Promise<CursorSearchResponse<LeadResult>> {
+  const body = cursor
+    ? { cursor }
+    : { ...filters, searchType: "leads" };
+
   const { data, error } = await supabase.functions.invoke("unipile-search", {
-    body: { ...filters, searchType: "leads", page },
+    body,
   });
 
   if (error) {
@@ -91,7 +113,8 @@ export async function searchLeads(
   }
 
   return {
-    ...data,
     items: (data.items || []).map((item: Record<string, unknown>) => normalizeLead(item)),
+    cursor: data.cursor || null,
+    paging: data.paging || { start: 0, count: 0, total: null },
   };
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Building2, Users } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AccountSearchForm } from "@/components/AccountSearchForm";
@@ -14,43 +14,71 @@ import {
   type AccountSearchFilters,
   type LeadResult,
   type LeadSearchFilters,
-  type PaginationInfo,
 } from "@/lib/api/unipile";
 import { useToast } from "@/hooks/use-toast";
+
+type CursorState = {
+  /** All accumulated items for display on the current logical page */
+  allItems: unknown[];
+  /** Cursor history: cursors[i] = cursor to fetch page i+2 (index 0 = cursor after page 1) */
+  cursors: (string | null)[];
+  /** Current logical page (1-based) */
+  page: number;
+  /** Total count from API */
+  totalCount: number | null;
+  /** Items per logical page */
+  perPage: number;
+};
+
+const DEFAULT_PER_PAGE = 25;
 
 const Index = () => {
   const { toast } = useToast();
 
-  // Accounts state
-  const [accountResults, setAccountResults] = useState<AccountResult[]>([]);
+  // ── Accounts ──
+  const [accountItems, setAccountItems] = useState<AccountResult[]>([]);
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountSearched, setAccountSearched] = useState(false);
   const [accountFilters, setAccountFilters] = useState<AccountSearchFilters>({});
-  const [accountPagination, setAccountPagination] = useState<PaginationInfo>({
-    page: 1,
-    hasMore: false,
-    totalEstimate: null,
-  });
+  const accountCursorRef = useRef<{
+    cursors: (string | null)[];
+    page: number;
+    totalCount: number | null;
+    perPage: number;
+    latestCursor: string | null;
+  }>({ cursors: [], page: 1, totalCount: null, perPage: DEFAULT_PER_PAGE, latestCursor: null });
 
-  // Leads state
-  const [leadResults, setLeadResults] = useState<LeadResult[]>([]);
+  // ── Leads ──
+  const [leadItems, setLeadItems] = useState<LeadResult[]>([]);
   const [leadLoading, setLeadLoading] = useState(false);
   const [leadSearched, setLeadSearched] = useState(false);
   const [leadFilters, setLeadFilters] = useState<LeadSearchFilters>({});
-  const [leadPagination, setLeadPagination] = useState<PaginationInfo>({
-    page: 1,
-    hasMore: false,
-    totalEstimate: null,
-  });
+  const leadCursorRef = useRef<{
+    cursors: (string | null)[];
+    page: number;
+    totalCount: number | null;
+    perPage: number;
+    latestCursor: string | null;
+  }>({ cursors: [], page: 1, totalCount: null, perPage: DEFAULT_PER_PAGE, latestCursor: null });
 
-  const handleAccountSearch = async (filters: AccountSearchFilters, page = 1) => {
+  // ── Account search ──
+  const handleAccountSearch = useCallback(async (filters: AccountSearchFilters, cursor?: string | null, page = 1) => {
     setAccountLoading(true);
     setAccountSearched(true);
     setAccountFilters(filters);
     try {
-      const data = await searchAccounts(filters, page);
-      setAccountResults(data.items || []);
-      setAccountPagination(data.pagination || { page, hasMore: false, totalEstimate: null });
+      const data = await searchAccounts(filters, cursor);
+      setAccountItems(data.items);
+      accountCursorRef.current = {
+        ...accountCursorRef.current,
+        page,
+        totalCount: data.paging.total,
+        latestCursor: data.cursor,
+      };
+      // Store cursor for this page
+      if (data.cursor) {
+        accountCursorRef.current.cursors[page - 1] = data.cursor;
+      }
     } catch (error) {
       console.error("Search error:", error);
       toast({
@@ -58,20 +86,46 @@ const Index = () => {
         description: error instanceof Error ? error.message : "Falha ao buscar empresas",
         variant: "destructive",
       });
-      setAccountResults([]);
+      setAccountItems([]);
     } finally {
       setAccountLoading(false);
     }
-  };
+  }, [toast]);
 
-  const handleLeadSearch = async (filters: LeadSearchFilters, page = 1) => {
+  const handleAccountPageChange = useCallback((direction: "next" | "prev") => {
+    const ref = accountCursorRef.current;
+    if (direction === "next" && ref.latestCursor) {
+      handleAccountSearch(accountFilters, ref.latestCursor, ref.page + 1);
+    } else if (direction === "prev" && ref.page > 1) {
+      const prevPage = ref.page - 1;
+      if (prevPage === 1) {
+        // Re-run original search
+        handleAccountSearch(accountFilters, undefined, 1);
+      } else {
+        // Use stored cursor for previous page
+        const prevCursor = ref.cursors[prevPage - 2] || null;
+        handleAccountSearch(accountFilters, prevCursor, prevPage);
+      }
+    }
+  }, [accountFilters, handleAccountSearch]);
+
+  // ── Lead search ──
+  const handleLeadSearch = useCallback(async (filters: LeadSearchFilters, cursor?: string | null, page = 1) => {
     setLeadLoading(true);
     setLeadSearched(true);
     setLeadFilters(filters);
     try {
-      const data = await searchLeads(filters, page);
-      setLeadResults(data.items || []);
-      setLeadPagination(data.pagination || { page, hasMore: false, totalEstimate: null });
+      const data = await searchLeads(filters, cursor);
+      setLeadItems(data.items);
+      leadCursorRef.current = {
+        ...leadCursorRef.current,
+        page,
+        totalCount: data.paging.total,
+        latestCursor: data.cursor,
+      };
+      if (data.cursor) {
+        leadCursorRef.current.cursors[page - 1] = data.cursor;
+      }
     } catch (error) {
       console.error("Search error:", error);
       toast({
@@ -79,11 +133,30 @@ const Index = () => {
         description: error instanceof Error ? error.message : "Falha ao buscar leads",
         variant: "destructive",
       });
-      setLeadResults([]);
+      setLeadItems([]);
     } finally {
       setLeadLoading(false);
     }
-  };
+  }, [toast]);
+
+  const handleLeadPageChange = useCallback((direction: "next" | "prev") => {
+    const ref = leadCursorRef.current;
+    if (direction === "next" && ref.latestCursor) {
+      handleLeadSearch(leadFilters, ref.latestCursor, ref.page + 1);
+    } else if (direction === "prev" && ref.page > 1) {
+      const prevPage = ref.page - 1;
+      if (prevPage === 1) {
+        handleLeadSearch(leadFilters, undefined, 1);
+      } else {
+        const prevCursor = ref.cursors[prevPage - 2] || null;
+        handleLeadSearch(leadFilters, prevCursor, prevPage);
+      }
+    }
+  }, [leadFilters, handleLeadSearch]);
+
+  // Force re-render for ref-based state
+  const acRef = accountCursorRef.current;
+  const ldRef = leadCursorRef.current;
 
   return (
     <div className="space-y-6 p-6 lg:p-8">
@@ -110,16 +183,35 @@ const Index = () => {
 
         <TabsContent value="accounts" className="space-y-4">
           <AccountSearchForm
-            onSearch={(f) => handleAccountSearch(f, 1)}
+            onSearch={(f) => {
+              accountCursorRef.current = { cursors: [], page: 1, totalCount: null, perPage: accountCursorRef.current.perPage, latestCursor: null };
+              handleAccountSearch(f, undefined, 1);
+            }}
             isLoading={accountLoading}
           />
-          {(accountSearched || accountResults.length > 0) && (
+          {(accountSearched || accountItems.length > 0) && (
             <>
-              <ResultsTable results={accountResults} isLoading={accountLoading} />
+              {/* Total count header */}
+              {acRef.totalCount != null && (
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-semibold text-foreground">
+                    {acRef.totalCount.toLocaleString("pt-BR")}
+                  </span>{" "}
+                  empresas encontradas
+                </p>
+              )}
+              <ResultsTable results={accountItems} isLoading={accountLoading} />
               <SearchPagination
-                pagination={accountPagination}
-                onPageChange={(p) => handleAccountSearch(accountFilters, p)}
+                page={acRef.page}
+                hasMore={!!acRef.latestCursor}
+                totalCount={acRef.totalCount}
+                perPage={acRef.perPage}
+                onPageChange={handleAccountPageChange}
+                onPerPageChange={(n) => {
+                  accountCursorRef.current.perPage = n;
+                }}
                 isLoading={accountLoading}
+                entityLabel="empresas"
               />
             </>
           )}
@@ -127,16 +219,34 @@ const Index = () => {
 
         <TabsContent value="leads" className="space-y-4">
           <LeadSearchForm
-            onSearch={(f) => handleLeadSearch(f, 1)}
+            onSearch={(f) => {
+              leadCursorRef.current = { cursors: [], page: 1, totalCount: null, perPage: leadCursorRef.current.perPage, latestCursor: null };
+              handleLeadSearch(f, undefined, 1);
+            }}
             isLoading={leadLoading}
           />
-          {(leadSearched || leadResults.length > 0) && (
+          {(leadSearched || leadItems.length > 0) && (
             <>
-              <LeadResultsTable results={leadResults} isLoading={leadLoading} />
+              {ldRef.totalCount != null && (
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-semibold text-foreground">
+                    {ldRef.totalCount.toLocaleString("pt-BR")}
+                  </span>{" "}
+                  profissionais encontrados
+                </p>
+              )}
+              <LeadResultsTable results={leadItems} isLoading={leadLoading} />
               <SearchPagination
-                pagination={leadPagination}
-                onPageChange={(p) => handleLeadSearch(leadFilters, p)}
+                page={ldRef.page}
+                hasMore={!!ldRef.latestCursor}
+                totalCount={ldRef.totalCount}
+                perPage={ldRef.perPage}
+                onPageChange={handleLeadPageChange}
+                onPerPageChange={(n) => {
+                  leadCursorRef.current.perPage = n;
+                }}
                 isLoading={leadLoading}
+                entityLabel="profissionais"
               />
             </>
           )}
