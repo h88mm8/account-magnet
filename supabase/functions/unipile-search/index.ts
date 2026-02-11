@@ -27,45 +27,8 @@ const ANNUAL_REVENUE_MAP: Record<string, { id: string; text: string }> = {
   "7": { id: "7", text: "More than $1B" },
 };
 
-const INDUSTRY_MAP: Record<string, { id: string; text: string }> = {
-  "1": { id: "1", text: "Defense & Space" },
-  "3": { id: "3", text: "Computer Hardware" },
-  "4": { id: "4", text: "Computer Software" },
-  "5": { id: "5", text: "Telecommunications" },
-  "6": { id: "6", text: "Computer Networking" },
-  "7": { id: "7", text: "Semiconductors" },
-  "8": { id: "8", text: "Mechanical or Industrial Engineering" },
-  "11": { id: "11", text: "Biotechnology" },
-  "12": { id: "12", text: "Hospital & Health Care" },
-  "13": { id: "13", text: "Food & Beverages" },
-  "14": { id: "14", text: "Marketing and Advertising" },
-  "17": { id: "17", text: "Automotive" },
-  "27": { id: "27", text: "Retail" },
-  "28": { id: "28", text: "Consumer Goods" },
-  "29": { id: "29", text: "Cosmetics" },
-  "31": { id: "31", text: "Farming" },
-  "41": { id: "41", text: "Banking" },
-  "42": { id: "42", text: "Insurance" },
-  "43": { id: "43", text: "Financial Services" },
-  "44": { id: "44", text: "Government Administration" },
-  "47": { id: "47", text: "Accounting" },
-  "48": { id: "48", text: "Construction" },
-  "51": { id: "51", text: "Logistics and Supply Chain" },
-  "67": { id: "67", text: "Education Management" },
-  "68": { id: "68", text: "E-Learning" },
-  "69": { id: "69", text: "Law Practice" },
-  "80": { id: "80", text: "Real Estate" },
-  "94": { id: "94", text: "Management Consulting" },
-  "96": { id: "96", text: "IT Services and IT Consulting" },
-  "104": { id: "104", text: "Mining & Metals" },
-  "110": { id: "110", text: "Oil & Energy" },
-  "116": { id: "116", text: "Pharmaceuticals" },
-  "118": { id: "118", text: "Renewables & Environment" },
-  "129": { id: "129", text: "Human Resources" },
-  "137": { id: "137", text: "Staffing and Recruiting" },
-  "147": { id: "147", text: "Transportation" },
-  "3248": { id: "3248", text: "Robotics Engineering" },
-};
+// INDUSTRY_MAP removed — industries are now resolved dynamically via unipile-lookup.
+// The frontend sends pre-resolved { id, label, type } objects.
 
 // REGION handling:
 // - Frontend sends human-readable location strings (e.g. "Minas Gerais", "São Paulo (Cidade)")
@@ -274,7 +237,7 @@ function buildSalesNavAccountUrl(params: {
   keywords?: string;
   companySize?: string | string[];
   revenue?: string | string[];
-  industry?: string | string[];
+  industryResolved?: { id: string; text: string }[];
   location?: RegionInput | RegionInput[];
 }): string {
   const base = "https://www.linkedin.com/sales/search/company";
@@ -282,7 +245,12 @@ function buildSalesNavAccountUrl(params: {
 
   addFilter(filters, "COMPANY_HEADCOUNT", resolveMulti(params.companySize, COMPANY_HEADCOUNT_MAP));
   addFilter(filters, "ANNUAL_REVENUE", resolveMulti(params.revenue, ANNUAL_REVENUE_MAP));
-  addFilter(filters, "INDUSTRY", resolveMulti(params.industry, INDUSTRY_MAP));
+
+  // Industry: use pre-resolved objects directly (no fixed map)
+  if (params.industryResolved && params.industryResolved.length > 0) {
+    addFilter(filters, "INDUSTRY", params.industryResolved.map(i => ({ id: i.id, text: i.text, selectionType: "INCLUDED" })));
+  }
+
   addFilter(filters, "REGION", resolveRegion(params.location));
 
   return buildFinalUrl(base, filters, params.keywords);
@@ -294,7 +262,7 @@ function buildSalesNavLeadUrl(params: {
   keywords?: string;
   seniority?: string | string[];
   jobFunction?: string | string[];
-  industry?: string | string[];
+  industryResolved?: { id: string; text: string }[];
   location?: RegionInput | RegionInput[];
   companySize?: string | string[];
   yearsOfExperience?: string | string[];
@@ -305,7 +273,12 @@ function buildSalesNavLeadUrl(params: {
 
   addFilter(filters, "SENIORITY_LEVEL", resolveMulti(params.seniority, SENIORITY_MAP));
   addFilter(filters, "FUNCTION", resolveMulti(params.jobFunction, FUNCTION_MAP));
-  addFilter(filters, "INDUSTRY", resolveMulti(params.industry, INDUSTRY_MAP));
+
+  // Industry: use pre-resolved objects directly (no fixed map)
+  if (params.industryResolved && params.industryResolved.length > 0) {
+    addFilter(filters, "INDUSTRY", params.industryResolved.map(i => ({ id: i.id, text: i.text, selectionType: "INCLUDED" })));
+  }
+
   addFilter(filters, "REGION", resolveRegion(params.location));
   addFilter(filters, "COMPANY_HEADCOUNT", resolveMulti(params.companySize, COMPANY_HEADCOUNT_MAP));
   addFilter(filters, "YEARS_OF_EXPERIENCE", resolveMulti(params.yearsOfExperience, YEARS_OF_EXPERIENCE_MAP));
@@ -469,12 +442,15 @@ Deno.serve(async (req) => {
         console.log("[SEARCH] Resolved locations from text:", JSON.stringify(finalLocation));
       }
 
-      // Use pre-resolved industry objects if available, otherwise use catalog IDs
-      let finalIndustry = industry;
+      // Build resolved industry entries from pre-resolved objects
+      const resolvedIndustryEntries: { id: string; text: string }[] = [];
       if (industryResolved && Array.isArray(industryResolved) && industryResolved.length > 0) {
-        // Convert resolved items to catalog-style IDs for INDUSTRY_MAP
-        finalIndustry = industryResolved.map((item: { id: string }) => item.id);
-        console.log("[SEARCH] Using pre-resolved industries:", JSON.stringify(finalIndustry));
+        for (const item of industryResolved) {
+          const id = String(item.id || "").trim();
+          const text = String(item.text || item.label || id).trim();
+          if (id) resolvedIndustryEntries.push({ id, text });
+        }
+        console.log("[SEARCH] Using pre-resolved industries:", JSON.stringify(resolvedIndustryEntries));
       }
 
       const searchUrl = isLeads
@@ -482,7 +458,7 @@ Deno.serve(async (req) => {
             keywords,
             seniority,
             jobFunction,
-            industry: finalIndustry,
+            industryResolved: resolvedIndustryEntries.length > 0 ? resolvedIndustryEntries : undefined,
             location: finalLocation,
             companySize,
             yearsOfExperience,
@@ -492,7 +468,7 @@ Deno.serve(async (req) => {
             keywords,
             companySize,
             revenue,
-            industry: finalIndustry,
+            industryResolved: resolvedIndustryEntries.length > 0 ? resolvedIndustryEntries : undefined,
             location: finalLocation,
           });
 
