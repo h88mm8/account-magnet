@@ -245,6 +245,61 @@ function buildFinalUrl(base: string, filters: FilterEntry[], keywords?: string):
   return `${base}?query=(${parts.join(",")})`;
 }
 
+// ── Enrich company locations via profile endpoint ────────────────────
+
+async function enrichCompanyLocations(
+  items: Record<string, unknown>[],
+  baseUrl: string,
+  apiKey: string,
+  accountId: string
+): Promise<Record<string, unknown>[]> {
+  const promises = items.map(async (item) => {
+    const id = item.id as string | undefined;
+    if (!id || (item.location && item.location !== "")) return item;
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+
+      const url = `${baseUrl}/api/v1/linkedin/company/${encodeURIComponent(id)}?account_id=${encodeURIComponent(accountId)}`;
+      const res = await fetch(url, {
+        method: "GET",
+        headers: { "X-API-KEY": apiKey, accept: "application/json" },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!res.ok) return item;
+
+      const profile = await res.json();
+      // Log first profile response to understand the shape
+      console.log(`[ENRICH] Profile for ${id}:`, JSON.stringify({
+        location: profile.location,
+        headquarters: profile.headquarters,
+        hq_location: profile.hq_location,
+        headquarter: profile.headquarter,
+        address: profile.address,
+        city: profile.city,
+        country: profile.country,
+      }));
+
+      const location = profile.location || profile.headquarters || profile.hq_location ||
+        profile.headquarter || profile.address || profile.city || "";
+
+      if (location) {
+        return { ...item, location };
+      }
+      return item;
+    } catch (e) {
+      console.warn(`[ENRICH] Failed for ${id}:`, e);
+      return item;
+    }
+  });
+
+  const results = await Promise.allSettled(promises);
+  return results.map((r, i) => r.status === "fulfilled" ? r.value : items[i]);
+}
+
 // ── Main handler ─────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
@@ -363,26 +418,8 @@ Deno.serve(async (req) => {
     const nextCursor = data.cursor || null;
     console.log("[PAGINATION] paging:", JSON.stringify(paging), "cursor:", nextCursor);
 
-    // Log raw first item for field diagnosis
     if ((data.items || []).length > 0) {
-      console.log(`[DIAG] Raw first item:`, JSON.stringify(data.items[0]));
-      // Log ALL keys of first item to find location field
-      console.log(`[DIAG] First item keys:`, Object.keys(data.items[0]));
-      // Log location-related fields for first 5 items
-      const locationDiag = (data.items || []).slice(0, 5).map((it: Record<string, unknown>, i: number) => ({
-        i,
-        name: it.name,
-        location: it.location,
-        headquarters: it.headquarters,
-        hq: it.hq_location,
-        geography: it.geography,
-        region: it.region,
-        address: it.address,
-        city: it.city,
-        country: it.country,
-        geo: it.geo,
-      }));
-      console.log(`[DIAG] Location fields (first 5):`, JSON.stringify(locationDiag));
+      console.log(`[SEARCH] First item keys:`, Object.keys(data.items[0]));
     }
 
     // Determine searchType: from body or infer from cursor response
@@ -414,7 +451,9 @@ Deno.serve(async (req) => {
         };
       });
     } else {
-      items = (data.items || []).map((item: Record<string, unknown>) => ({
+      // Enrich company locations from profile endpoint
+      const enrichedItems = await enrichCompanyLocations(data.items || [], baseUrl, apiKey, accountId);
+      items = enrichedItems.map((item: Record<string, unknown>) => ({
         name: item.name || item.title || item.company_name || item.companyName || "",
         industry: item.industry || item.sector || item.vertical || "",
         location: item.location || item.headquarters || item.hq_location || item.headquarter ||
