@@ -27,12 +27,13 @@ const Companies = () => {
     latestCursor: string | null;
   }>({ cursors: [], page: 1, totalCount: null, perPage: DEFAULT_PER_PAGE, latestCursor: null });
 
-  const handleSearch = useCallback(async (f: AccountSearchFilters, cursor?: string | null, page = 1) => {
+  const handleSearch = useCallback(async (f: AccountSearchFilters, cursor?: string | null, page = 1, perPage?: number) => {
     setLoading(true);
     setSearched(true);
     setFilters(f);
     try {
-      const data = await searchAccounts(f, cursor);
+      const limit = perPage || cursorRef.current.perPage;
+      const data = await searchAccounts(f, cursor, limit);
       setResults(data.items || []);
       cursorRef.current = {
         ...cursorRef.current,
@@ -126,7 +127,10 @@ const Companies = () => {
             totalCount={ref.totalCount}
             perPage={ref.perPage}
             onPageChange={handlePageChange}
-            onPerPageChange={(n) => { cursorRef.current.perPage = n; }}
+            onPerPageChange={(n) => {
+              cursorRef.current = { cursors: [], page: 1, totalCount: null, perPage: n, latestCursor: null };
+              handleSearch(filters, undefined, 1, n);
+            }}
             isLoading={loading}
             entityLabel="empresas"
           />
