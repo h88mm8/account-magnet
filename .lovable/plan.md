@@ -1,57 +1,47 @@
 
 
-## Correção: Seletor de quantidade por página (limit) não funciona
+## Enriquecer resultados de empresas com localização real via API de perfil
 
-### Causa raiz
+### Problema
+O endpoint de busca do Unipile (`/api/v1/linkedin/search`) retorna `location: null` para empresas. Porém, o endpoint de perfil individual (`GET /api/v1/linkedin/company/{id}`) retorna a localização completa (ex: "São Paulo e Região"), como mostrado na imagem de referência do LinkedIn.
 
-A API do Unipile espera `limit` como **query parameter na URL**, nao no corpo JSON da requisicao. Atualmente, o edge function envia `limit` dentro do `body` JSON, onde e ignorado pela API. Por isso, o valor padrao de **10 resultados** e sempre usado.
+### Solução
+Após receber os resultados de busca de empresas, fazer chamadas paralelas ao endpoint de perfil de cada empresa para buscar a localização real.
 
-Documentacao da Unipile confirma:
-- `limit` - query parameter (integer, 0 a 100, default 10)
-- `cursor` - query parameter (string)
-- `account_id` - query parameter (string, obrigatorio)
+### Detalhes técnicos
 
-Alem disso, o limite maximo da API e **100 por requisicao** (Sales Navigator). As opcoes de 200 no seletor nao sao suportadas diretamente pela API.
+**Arquivo: `supabase/functions/unipile-search/index.ts`**
 
-### Plano de correcao
+1. Criar uma função `enrichCompanyLocations` que:
+   - Recebe a lista de itens da busca, o `baseUrl`, `apiKey` e `accountId`
+   - Para cada empresa que tenha `id` e `location` nulo/vazio, faz uma chamada `GET` a `{baseUrl}/api/v1/linkedin/company/{id}?account_id={accountId}`
+   - Executa todas as chamadas em paralelo com `Promise.allSettled` para não bloquear se uma falhar
+   - Extrai o campo de localização da resposta do perfil (provavelmente `headquarters`, `location`, ou `hq_location`)
+   - Retorna os itens com a localização preenchida
 
-**1. Edge Function (`supabase/functions/unipile-search/index.ts`)**
+2. Chamar essa função apenas quando `searchType === "accounts"` (não para leads)
 
-Mover `limit` e `cursor` do corpo JSON para query parameters na URL:
+3. Adicionar logs de diagnóstico para verificar o formato da resposta do endpoint de perfil
 
-- Construir a URL assim: `${baseUrl}/api/v1/linkedin/search?account_id=${accountId}&limit=${limit}`
-- Quando houver cursor: `${baseUrl}/api/v1/linkedin/search?account_id=${accountId}&limit=${limit}&cursor=${cursor}`
-- Remover `limit` e `cursor` do objeto `unipileBody` (corpo JSON)
-- Quando usar cursor, o body deve conter apenas `{}` (vazio) ou ser omitido
+4. Remover os logs de diagnóstico antigos (DIAG) que não são mais necessários
 
-**2. Ajustar opcoes do seletor (`SearchPagination.tsx`)**
-
-- Alterar opcoes de `[25, 50, 100, 200]` para `[10, 25, 50, 100]`
-- O maximo suportado pela API e 100, entao 200 deve ser removido
-
-**3. Ajustar default nos componentes**
-
-- Manter `DEFAULT_PER_PAGE = 25` em Companies.tsx, Contacts.tsx e Index.tsx (ja esta assim)
-
-### Detalhes tecnicos
-
-Arquivo principal: `supabase/functions/unipile-search/index.ts`
-
-Mudanca na construcao da URL (linha ~328):
+**Fluxo da requisição:**
 
 ```text
-ANTES:
-  const unipileUrl = `${baseUrl}/api/v1/linkedin/search?account_id=${accountId}`;
-  body: JSON.stringify({ ...params, limit, cursor })
-
-DEPOIS:
-  let unipileUrl = `${baseUrl}/api/v1/linkedin/search?account_id=${accountId}&limit=${limit || 25}`;
-  if (cursor) unipileUrl += `&cursor=${encodeURIComponent(cursor)}`;
-  body: JSON.stringify(cursorOnly ? {} : searchParams)  // sem limit/cursor no body
+Busca -> /api/v1/linkedin/search (retorna empresas com location: null)
+   |
+   v
+Enriquecimento -> GET /api/v1/linkedin/company/{id} (para cada empresa, em paralelo)
+   |
+   v
+Resposta final -> items com location preenchida (ex: "São Paulo e Região")
 ```
 
-Arquivo secundario: `src/components/SearchPagination.tsx`
-- Alterar `PER_PAGE_OPTIONS` de `[25, 50, 100, 200]` para `[10, 25, 50, 100]`
+**Considerações de performance:**
+- As chamadas de perfil são feitas em paralelo (`Promise.allSettled`), minimizando a latência total
+- Se uma chamada individual falhar, o item mantém location vazio sem afetar os outros
+- Para 25 resultados (default), a latência adicional sera aproximadamente o tempo de 1 chamada (ja que sao paralelas)
+- Timeout de 5 segundos por chamada individual para evitar travamentos
 
-Nenhuma alteracao de banco de dados necessaria.
+**Nenhuma alteração de frontend necessaria** - o campo `location` ja e renderizado em `ResultsTable.tsx`. Basta retornar o valor correto do backend.
 
