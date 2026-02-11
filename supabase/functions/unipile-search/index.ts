@@ -271,14 +271,21 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const { cursor, limit } = body;
+    const effectiveLimit = Math.min(Math.max(Number(limit) || 25, 1), 100);
 
-    // ── Cursor-based pagination: if cursor present, send ONLY the cursor ──
+    // ── Build Unipile URL with limit & cursor as query parameters ──
+    let unipileUrl = `${baseUrl}/api/v1/linkedin/search?account_id=${encodeURIComponent(accountId)}&limit=${effectiveLimit}`;
+    if (cursor) {
+      unipileUrl += `&cursor=${encodeURIComponent(cursor)}`;
+    }
+
+    // ── Build request body ──
     let unipileBody: Record<string, unknown>;
 
     if (cursor) {
-      console.log("[PAGINATION] Using cursor:", cursor, "limit:", limit);
-      unipileBody = { cursor } as Record<string, unknown>;
-      if (limit) unipileBody.limit = Number(limit);
+      console.log("[PAGINATION] Using cursor:", cursor, "limit:", effectiveLimit);
+      // Cursor pagination: empty body (no filters, no limit, no cursor in body)
+      unipileBody = {};
     } else {
       // First page: build URL from filters
       const {
@@ -316,16 +323,14 @@ Deno.serve(async (req) => {
           });
 
       console.log(`[SEARCH] Sales Navigator URL (${searchType}):`, searchUrl);
+      console.log(`[SEARCH] Limit: ${effectiveLimit}`);
 
       unipileBody = {
         api: "sales_navigator",
         category: isLeads ? "people" : "companies",
         url: searchUrl,
       };
-      if (limit) unipileBody.limit = Number(limit);
     }
-
-    const unipileUrl = `${baseUrl}/api/v1/linkedin/search?account_id=${encodeURIComponent(accountId)}`;
 
     const response = await fetch(unipileUrl, {
       method: "POST",
