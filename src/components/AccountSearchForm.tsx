@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, MapPin, Users, DollarSign, Factory } from "lucide-react";
+import { Search, MapPin, Users, DollarSign, Factory, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,10 +14,12 @@ import type { AccountSearchFilters } from "@/lib/api/unipile";
 
 type Props = {
   onSearch: (filters: AccountSearchFilters) => void;
+  onClear?: () => void;
   isLoading: boolean;
+  hasResults?: boolean;
 };
 
-export function AccountSearchForm({ onSearch, isLoading }: Props) {
+export function AccountSearchForm({ onSearch, onClear, isLoading, hasResults }: Props) {
   const [keywords, setKeywords] = useState("");
   const [location, setLocation] = useState<string[]>([]);
   const [industry, setIndustry] = useState<string[]>([]);
@@ -33,6 +35,15 @@ export function AccountSearchForm({ onSearch, isLoading }: Props) {
       companySize: companySize.length ? companySize : undefined,
       revenue: revenue.length ? revenue : undefined,
     });
+  };
+
+  const handleClear = () => {
+    setKeywords("");
+    setLocation([]);
+    setIndustry([]);
+    setCompanySize([]);
+    setRevenue([]);
+    onClear?.();
   };
 
   return (
@@ -102,10 +113,18 @@ export function AccountSearchForm({ onSearch, isLoading }: Props) {
               />
             </div>
 
-            <Button type="submit" disabled={isLoading} className="h-9 gap-2 px-5">
-              <Search className="h-3.5 w-3.5" />
-              {isLoading ? "Buscando..." : "Buscar"}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button type="submit" disabled={isLoading} className="h-9 gap-2 px-5">
+                <Search className="h-3.5 w-3.5" />
+                {isLoading ? "Buscando..." : "Buscar"}
+              </Button>
+              {hasResults && (
+                <Button type="button" variant="ghost" size="sm" onClick={handleClear} className="h-9 gap-1.5 text-muted-foreground">
+                  <X className="h-3.5 w-3.5" />
+                  Limpar
+                </Button>
+              )}
+            </div>
           </div>
         </form>
       </CardContent>

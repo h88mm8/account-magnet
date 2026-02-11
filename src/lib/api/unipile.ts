@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { normalizeAccount, normalizeLead } from "@/lib/normalize";
+import { locations as locationsCatalog } from "@/lib/filter-catalogs";
 
 // ── Account types ────────────────────────────────────────────────────
 
@@ -90,11 +91,33 @@ export async function searchAccounts(
     throw new Error(error.message || "Erro ao buscar empresas");
   }
 
+  // Build location fallback from applied filter labels
+  const locationFallback = buildLocationFallback(filters.location);
+
   return {
-    items: (data.items || []).map((item: Record<string, unknown>) => normalizeAccount(item)),
+    items: (data.items || []).map((item: Record<string, unknown>) => {
+      const normalized = normalizeAccount(item);
+      if (!normalized.location && locationFallback) {
+        normalized.location = locationFallback;
+      }
+      return normalized;
+    }),
     cursor: data.cursor || null,
     paging: data.paging || { start: 0, count: 0, total: null },
   };
+}
+
+function buildLocationFallback(location?: string | string[]): string {
+  if (!location) return "";
+  const ids = Array.isArray(location) ? location : [location];
+  if (ids.length === 0) return "";
+  const labels = ids
+    .map((id) => {
+      const found = locationsCatalog.find((l) => l.value === id);
+      return found?.label || "";
+    })
+    .filter(Boolean);
+  return labels.join(", ");
 }
 
 export async function searchLeads(

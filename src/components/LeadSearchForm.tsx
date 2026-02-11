@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, MapPin, Users, Factory, Briefcase, Award, Clock, Building } from "lucide-react";
+import { Search, MapPin, Users, Factory, Briefcase, Award, Clock, Building, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,10 +17,12 @@ import type { LeadSearchFilters } from "@/lib/api/unipile";
 
 type Props = {
   onSearch: (filters: LeadSearchFilters) => void;
+  onClear?: () => void;
   isLoading: boolean;
+  hasResults?: boolean;
 };
 
-export function LeadSearchForm({ onSearch, isLoading }: Props) {
+export function LeadSearchForm({ onSearch, onClear, isLoading, hasResults }: Props) {
   const [keywords, setKeywords] = useState("");
   const [seniority, setSeniority] = useState<string[]>([]);
   const [jobFunction, setJobFunction] = useState<string[]>([]);
@@ -42,6 +44,18 @@ export function LeadSearchForm({ onSearch, isLoading }: Props) {
       yearsOfExperience: experience.length ? experience : undefined,
       yearsAtCurrentCompany: tenure.length ? tenure : undefined,
     });
+  };
+
+  const handleClear = () => {
+    setKeywords("");
+    setSeniority([]);
+    setJobFunction([]);
+    setIndustry([]);
+    setLocation([]);
+    setCompanySize([]);
+    setExperience([]);
+    setTenure([]);
+    onClear?.();
   };
 
   return (
@@ -154,10 +168,18 @@ export function LeadSearchForm({ onSearch, isLoading }: Props) {
               />
             </div>
 
-            <Button type="submit" disabled={isLoading} className="h-9 gap-2 px-5">
-              <Search className="h-3.5 w-3.5" />
-              {isLoading ? "Buscando..." : "Buscar"}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button type="submit" disabled={isLoading} className="h-9 gap-2 px-5">
+                <Search className="h-3.5 w-3.5" />
+                {isLoading ? "Buscando..." : "Buscar"}
+              </Button>
+              {hasResults && (
+                <Button type="button" variant="ghost" size="sm" onClick={handleClear} className="h-9 gap-1.5 text-muted-foreground">
+                  <X className="h-3.5 w-3.5" />
+                  Limpar
+                </Button>
+              )}
+            </div>
           </div>
         </form>
       </CardContent>
