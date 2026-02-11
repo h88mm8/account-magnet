@@ -366,6 +366,23 @@ Deno.serve(async (req) => {
     // Log raw first item for field diagnosis
     if ((data.items || []).length > 0) {
       console.log(`[DIAG] Raw first item:`, JSON.stringify(data.items[0]));
+      // Log ALL keys of first item to find location field
+      console.log(`[DIAG] First item keys:`, Object.keys(data.items[0]));
+      // Log location-related fields for first 5 items
+      const locationDiag = (data.items || []).slice(0, 5).map((it: Record<string, unknown>, i: number) => ({
+        i,
+        name: it.name,
+        location: it.location,
+        headquarters: it.headquarters,
+        hq: it.hq_location,
+        geography: it.geography,
+        region: it.region,
+        address: it.address,
+        city: it.city,
+        country: it.country,
+        geo: it.geo,
+      }));
+      console.log(`[DIAG] Location fields (first 5):`, JSON.stringify(locationDiag));
     }
 
     // Determine searchType: from body or infer from cursor response
