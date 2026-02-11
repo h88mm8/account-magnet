@@ -270,14 +270,15 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { cursor } = body;
+    const { cursor, limit } = body;
 
     // ── Cursor-based pagination: if cursor present, send ONLY the cursor ──
     let unipileBody: Record<string, unknown>;
 
     if (cursor) {
-      console.log("[PAGINATION] Using cursor:", cursor);
-      unipileBody = { cursor };
+      console.log("[PAGINATION] Using cursor:", cursor, "limit:", limit);
+      unipileBody = { cursor } as Record<string, unknown>;
+      if (limit) unipileBody.limit = Number(limit);
     } else {
       // First page: build URL from filters
       const {
@@ -321,6 +322,7 @@ Deno.serve(async (req) => {
         category: isLeads ? "people" : "companies",
         url: searchUrl,
       };
+      if (limit) unipileBody.limit = Number(limit);
     }
 
     const unipileUrl = `${baseUrl}/api/v1/linkedin/search?account_id=${encodeURIComponent(accountId)}`;

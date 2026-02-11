@@ -75,11 +75,12 @@ export type SearchResponse<T> = {
 
 export async function searchAccounts(
   filters: AccountSearchFilters,
-  cursor?: string | null
+  cursor?: string | null,
+  limit?: number
 ): Promise<CursorSearchResponse<AccountResult>> {
   const body = cursor
-    ? { cursor }
-    : { ...filters, searchType: "accounts" };
+    ? { cursor, ...(limit ? { limit } : {}) }
+    : { ...filters, searchType: "accounts", ...(limit ? { limit } : {}) };
 
   const { data, error } = await supabase.functions.invoke("unipile-search", {
     body,
@@ -98,11 +99,12 @@ export async function searchAccounts(
 
 export async function searchLeads(
   filters: LeadSearchFilters,
-  cursor?: string | null
+  cursor?: string | null,
+  limit?: number
 ): Promise<CursorSearchResponse<LeadResult>> {
   const body = cursor
-    ? { cursor }
-    : { ...filters, searchType: "leads" };
+    ? { cursor, ...(limit ? { limit } : {}) }
+    : { ...filters, searchType: "leads", ...(limit ? { limit } : {}) };
 
   const { data, error } = await supabase.functions.invoke("unipile-search", {
     body,

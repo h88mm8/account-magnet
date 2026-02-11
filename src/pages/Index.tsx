@@ -62,12 +62,13 @@ const Index = () => {
   }>({ cursors: [], page: 1, totalCount: null, perPage: DEFAULT_PER_PAGE, latestCursor: null });
 
   // ── Account search ──
-  const handleAccountSearch = useCallback(async (filters: AccountSearchFilters, cursor?: string | null, page = 1) => {
+  const handleAccountSearch = useCallback(async (filters: AccountSearchFilters, cursor?: string | null, page = 1, perPage?: number) => {
     setAccountLoading(true);
     setAccountSearched(true);
     setAccountFilters(filters);
     try {
-      const data = await searchAccounts(filters, cursor);
+      const limit = perPage || accountCursorRef.current.perPage;
+      const data = await searchAccounts(filters, cursor, limit);
       setAccountItems(data.items);
       accountCursorRef.current = {
         ...accountCursorRef.current,
@@ -110,12 +111,13 @@ const Index = () => {
   }, [accountFilters, handleAccountSearch]);
 
   // ── Lead search ──
-  const handleLeadSearch = useCallback(async (filters: LeadSearchFilters, cursor?: string | null, page = 1) => {
+  const handleLeadSearch = useCallback(async (filters: LeadSearchFilters, cursor?: string | null, page = 1, perPage?: number) => {
     setLeadLoading(true);
     setLeadSearched(true);
     setLeadFilters(filters);
     try {
-      const data = await searchLeads(filters, cursor);
+      const limit = perPage || leadCursorRef.current.perPage;
+      const data = await searchLeads(filters, cursor, limit);
       setLeadItems(data.items);
       leadCursorRef.current = {
         ...leadCursorRef.current,
@@ -208,7 +210,8 @@ const Index = () => {
                 perPage={acRef.perPage}
                 onPageChange={handleAccountPageChange}
                 onPerPageChange={(n) => {
-                  accountCursorRef.current.perPage = n;
+                  accountCursorRef.current = { cursors: [], page: 1, totalCount: null, perPage: n, latestCursor: null };
+                  handleAccountSearch(accountFilters, undefined, 1, n);
                 }}
                 isLoading={accountLoading}
                 entityLabel="empresas"
@@ -243,7 +246,8 @@ const Index = () => {
                 perPage={ldRef.perPage}
                 onPageChange={handleLeadPageChange}
                 onPerPageChange={(n) => {
-                  leadCursorRef.current.perPage = n;
+                  leadCursorRef.current = { cursors: [], page: 1, totalCount: null, perPage: n, latestCursor: null };
+                  handleLeadSearch(leadFilters, undefined, 1, n);
                 }}
                 isLoading={leadLoading}
                 entityLabel="profissionais"
