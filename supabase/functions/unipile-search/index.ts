@@ -275,7 +275,7 @@ function buildSalesNavAccountUrl(params: {
   companySize?: string | string[];
   revenue?: string | string[];
   industry?: string | string[];
-  location?: string | string[];
+  location?: RegionInput | RegionInput[];
 }): string {
   const base = "https://www.linkedin.com/sales/search/company";
   const filters: FilterEntry[] = [];
@@ -295,7 +295,7 @@ function buildSalesNavLeadUrl(params: {
   seniority?: string | string[];
   jobFunction?: string | string[];
   industry?: string | string[];
-  location?: string | string[];
+  location?: RegionInput | RegionInput[];
   companySize?: string | string[];
   yearsOfExperience?: string | string[];
   yearsAtCurrentCompany?: string | string[];
@@ -453,13 +453,17 @@ Deno.serve(async (req) => {
 
       const isLeads = searchType === "leads";
 
+      // Resolve human-readable location strings to LinkedIn geo IDs
+      const resolvedLocation = await resolveLocationsToGeoIds(location, baseUrl, apiKey, accountId);
+      console.log("[SEARCH] Resolved locations:", JSON.stringify(resolvedLocation));
+
       const searchUrl = isLeads
         ? buildSalesNavLeadUrl({
             keywords,
             seniority,
             jobFunction,
             industry,
-            location,
+            location: resolvedLocation,
             companySize,
             yearsOfExperience,
             yearsAtCurrentCompany,
@@ -469,7 +473,7 @@ Deno.serve(async (req) => {
             companySize,
             revenue,
             industry,
-            location,
+            location: resolvedLocation,
           });
 
       console.log(`[SEARCH] Sales Navigator URL (${searchType}):`, searchUrl);
