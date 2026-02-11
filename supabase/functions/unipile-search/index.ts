@@ -67,21 +67,117 @@ const INDUSTRY_MAP: Record<string, { id: string; text: string }> = {
   "3248": { id: "3248", text: "Robotics Engineering" },
 };
 
-// REGION_MAP now accepts LinkedIn geo IDs directly (values from filter-catalogs).
-// The frontend sends geo IDs as filter values, so the map key = geo ID.
-// We keep a passthrough approach: if the key is a valid geo ID, use it directly.
+// REGION handling:
+// - Frontend sends human-readable location strings (e.g. "Minas Gerais", "São Paulo (Cidade)")
+// - We resolve them to LinkedIn/Sales Navigator geo IDs via Unipile "search/parameters".
+
+type RegionInput = string | { id: string; text?: string };
+
+function isNumericGeoId(v: string): boolean {
+  return /^\d{6,}$/.test(v);
+}
+
+function cleanLocationQuery(v: string): string {
+  // Remove suffixes like "(Estado)" / "(Cidade)" added in our UI catalog
+  return v.replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g, " ").trim();
+}
+
 function resolveRegion(
-  input: string | string[] | undefined
+  input: RegionInput | RegionInput[] | undefined
 ): { id: string; text: string; selectionType: string }[] {
   if (!input) return [];
-  const keys = Array.isArray(input) ? input : [input];
-  return keys
-    .filter((k) => k && k !== "any")
-    .map((k) => ({
-      id: k,
-      text: k, // The geo ID is passed as-is; Sales Navigator resolves the name
-      selectionType: "INCLUDED",
-    }));
+  const values = Array.isArray(input) ? input : [input];
+
+  return values
+    .map((v) => {
+      if (!v) return null;
+      if (typeof v === "string") {
+        const s = v.trim();
+        if (!s || s === "any") return null;
+        return {
+          id: s,
+          text: s,
+          selectionType: "INCLUDED",
+        };
+      }
+
+      const id = String(v.id || "").trim();
+      if (!id) return null;
+      return {
+        id,
+        text: String(v.text || id),
+        selectionType: "INCLUDED",
+      };
+    })
+    .filter(Boolean) as { id: string; text: string; selectionType: string }[];
+}
+
+async function resolveLocationsToGeoIds(
+  input: RegionInput | RegionInput[] | undefined,
+  baseUrl: string,
+  apiKey: string,
+  accountId: string
+): Promise<RegionInput[] | undefined> {
+  if (!input) return undefined;
+  const values = Array.isArray(input) ? input : [input];
+
+  const cache = new Map<string, RegionInput>();
+
+  const jobs = values
+    .filter(Boolean)
+    .map(async (v) => {
+      if (typeof v !== "string") return v;
+
+      const raw = v.trim();
+      if (!raw || raw === "any") return null;
+
+      // Already an ID
+      if (isNumericGeoId(raw)) return { id: raw, text: raw };
+
+      const query = cleanLocationQuery(raw);
+      if (!query) return null;
+
+      const cacheKey = query.toLowerCase();
+      const cached = cache.get(cacheKey);
+      if (cached) return cached;
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+
+      const url = `${baseUrl}/api/v1/linkedin/search/parameters?account_id=${encodeURIComponent(accountId)}&type=LOCATION&keywords=${encodeURIComponent(query)}&limit=25`;
+      const res = await fetch(url, {
+        method: "GET",
+        headers: { "X-API-KEY": apiKey, accept: "application/json" },
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeout));
+
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.warn(`[LOCATION] Failed to resolve "${query}" [${res.status}]:`, JSON.stringify(payload));
+        return null;
+      }
+
+      const first = (payload?.items || [])[0];
+      const id = String(first?.id || "").trim();
+      const text = String(first?.title || first?.name || query).trim();
+
+      if (!id || !isNumericGeoId(id)) {
+        console.warn(`[LOCATION] No valid geo ID for "${query}":`, JSON.stringify(first));
+        return null;
+      }
+
+      const resolved = { id, text };
+      cache.set(cacheKey, resolved);
+      console.log(`[LOCATION] Resolved "${raw}" -> ${id} (${text})`);
+      return resolved;
+    });
+
+  const settled = await Promise.allSettled(jobs);
+  const resolved = settled
+    .map((r) => (r.status === "fulfilled" ? r.value : null))
+    .filter(Boolean) as RegionInput[];
+
+  return resolved.length ? resolved : undefined;
 }
 
 // ── Sales Navigator ID mappings — Leads ──────────────────────────────
