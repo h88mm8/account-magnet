@@ -4,11 +4,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { MultiSelect } from "@/components/MultiSelect";
+import { FilterAutocomplete, type ResolvedFilterItem } from "@/components/FilterAutocomplete";
 import {
   companySizes,
   revenueRanges,
-  industries,
-  locations,
 } from "@/lib/filter-catalogs";
 import type { AccountSearchFilters } from "@/lib/api/unipile";
 
@@ -21,13 +20,10 @@ type Props = {
 
 export function AccountSearchForm({ onSearch, onClear, isLoading, hasResults }: Props) {
   const [keywords, setKeywords] = useState("");
-  const [location, setLocation] = useState<string[]>([]);
-  const [industry, setIndustry] = useState<string[]>([]);
+  const [location, setLocation] = useState<ResolvedFilterItem[]>([]);
+  const [industry, setIndustry] = useState<ResolvedFilterItem[]>([]);
   const [companySize, setCompanySize] = useState<string[]>([]);
   const [revenue, setRevenue] = useState<string[]>([]);
-
-  // Envia o texto (ex: "Minas Gerais") e o backend resolve para o ID correto
-  const locationOptions = locations.map((l) => ({ value: l.label, label: l.label }));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,11 +65,11 @@ export function AccountSearchForm({ onSearch, onClear, isLoading, hasResults }: 
                 <MapPin className="h-3 w-3" />
                 Localização
               </label>
-              <MultiSelect
-                options={locationOptions}
+              <FilterAutocomplete
+                lookupType="LOCATION"
                 value={location}
                 onChange={setLocation}
-                placeholder="Qualquer"
+                placeholder="Digite país, estado ou cidade..."
               />
             </div>
 
@@ -82,11 +78,11 @@ export function AccountSearchForm({ onSearch, onClear, isLoading, hasResults }: 
                 <Factory className="h-3 w-3" />
                 Setor
               </label>
-              <MultiSelect
-                options={industries}
+              <FilterAutocomplete
+                lookupType="INDUSTRY"
                 value={industry}
                 onChange={setIndustry}
-                placeholder="Qualquer"
+                placeholder="Digite o setor..."
               />
             </div>
 

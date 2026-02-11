@@ -1,1 +1,4 @@
 project_id = "rwagvawmceempafacnfh"
+
+[functions.unipile-lookup]
+verify_jwt = false

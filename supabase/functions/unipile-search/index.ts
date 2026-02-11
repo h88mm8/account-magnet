@@ -443,7 +443,9 @@ Deno.serve(async (req) => {
         keywords,
         revenue,
         location,
+        locationResolved,
         industry,
+        industryResolved,
         companySize,
         seniority,
         jobFunction,
@@ -453,17 +455,35 @@ Deno.serve(async (req) => {
 
       const isLeads = searchType === "leads";
 
-      // Resolve human-readable location strings to LinkedIn geo IDs
-      const resolvedLocation = await resolveLocationsToGeoIds(location, baseUrl, apiKey, accountId);
-      console.log("[SEARCH] Resolved locations:", JSON.stringify(resolvedLocation));
+      // Use pre-resolved location objects if available, otherwise fall back to text resolution
+      let finalLocation: RegionInput | RegionInput[] | undefined;
+      if (locationResolved && Array.isArray(locationResolved) && locationResolved.length > 0) {
+        // Frontend sent structured objects: { id, text, type }
+        finalLocation = locationResolved.map((item: { id: string; text?: string; type?: string }) => ({
+          id: item.id,
+          text: item.text || item.id,
+        }));
+        console.log("[SEARCH] Using pre-resolved locations:", JSON.stringify(finalLocation));
+      } else if (location) {
+        finalLocation = await resolveLocationsToGeoIds(location, baseUrl, apiKey, accountId);
+        console.log("[SEARCH] Resolved locations from text:", JSON.stringify(finalLocation));
+      }
+
+      // Use pre-resolved industry objects if available, otherwise use catalog IDs
+      let finalIndustry = industry;
+      if (industryResolved && Array.isArray(industryResolved) && industryResolved.length > 0) {
+        // Convert resolved items to catalog-style IDs for INDUSTRY_MAP
+        finalIndustry = industryResolved.map((item: { id: string }) => item.id);
+        console.log("[SEARCH] Using pre-resolved industries:", JSON.stringify(finalIndustry));
+      }
 
       const searchUrl = isLeads
         ? buildSalesNavLeadUrl({
             keywords,
             seniority,
             jobFunction,
-            industry,
-            location: resolvedLocation,
+            industry: finalIndustry,
+            location: finalLocation,
             companySize,
             yearsOfExperience,
             yearsAtCurrentCompany,
@@ -472,8 +492,8 @@ Deno.serve(async (req) => {
             keywords,
             companySize,
             revenue,
-            industry,
-            location: resolvedLocation,
+            industry: finalIndustry,
+            location: finalLocation,
           });
 
       console.log(`[SEARCH] Sales Navigator URL (${searchType}):`, searchUrl);
