@@ -107,10 +107,23 @@ export default function Lists() {
                 <TableRow>
                   <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tipo</TableHead>
                   <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Nome</TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cargo / Setor</TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Empresa</TableHead>
+                  {selectedList.list_type === "leads" ? (
+                    <>
+                      <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cargo</TableHead>
+                      <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Empresa</TableHead>
+                    </>
+                  ) : selectedList.list_type === "accounts" ? (
+                    <>
+                      <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Setor</TableHead>
+                      <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Funcionários</TableHead>
+                    </>
+                  ) : (
+                    <>
+                      <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cargo / Setor</TableHead>
+                      <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Empresa</TableHead>
+                    </>
+                  )}
                   <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Localização</TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Funcionários</TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
@@ -147,27 +160,52 @@ export default function Lists() {
                           </div>
                         </LeadMiniCard>
                       </TableCell>
-                      <TableCell>
-                        <span className="text-sm text-muted-foreground">
-                          {isLead ? (item.title || FALLBACK) : (item.industry || FALLBACK)}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                          {isLead ? <Briefcase className="h-3 w-3 shrink-0" /> : <Building2 className="h-3 w-3 shrink-0" />}
-                          {item.company || (isLead ? FALLBACK : "—")}
-                        </div>
-                      </TableCell>
+                      {selectedList.list_type === "leads" ? (
+                        <>
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">{item.title || FALLBACK}</span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                              <Building2 className="h-3 w-3 shrink-0" />
+                              {item.company || FALLBACK}
+                            </div>
+                          </TableCell>
+                        </>
+                      ) : selectedList.list_type === "accounts" ? (
+                        <>
+                          <TableCell>
+                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                              <Factory className="h-3 w-3 shrink-0" />
+                              {item.industry || FALLBACK}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                              <Users className="h-3 w-3 shrink-0" />
+                              {item.headcount || FALLBACK}
+                            </div>
+                          </TableCell>
+                        </>
+                      ) : (
+                        <>
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">
+                              {isLead ? (item.title || FALLBACK) : (item.industry || FALLBACK)}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                              {isLead ? <Briefcase className="h-3 w-3 shrink-0" /> : <Building2 className="h-3 w-3 shrink-0" />}
+                              {item.company || (isLead ? FALLBACK : "—")}
+                            </div>
+                          </TableCell>
+                        </>
+                      )}
                       <TableCell>
                         <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                           <MapPin className="h-3 w-3 shrink-0" />
                           {item.location || FALLBACK}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                          <Users className="h-3 w-3 shrink-0" />
-                          {item.headcount || FALLBACK}
                         </div>
                       </TableCell>
                       <TableCell>
