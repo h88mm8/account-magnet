@@ -1,37 +1,57 @@
 
 
-## Correção: Erro ao salvar em lista
+## Correção: Seletor de quantidade por página (limit) não funciona
 
 ### Causa raiz
 
-A tabela `prospect_lists` tem uma constraint no banco de dados que aceita apenas estes valores para `list_type`:
+A API do Unipile espera `limit` como **query parameter na URL**, nao no corpo JSON da requisicao. Atualmente, o edge function envia `limit` dentro do `body` JSON, onde e ignorado pela API. Por isso, o valor padrao de **10 resultados** e sempre usado.
 
-- `accounts`
-- `leads`
-- `mixed`
+Documentacao da Unipile confirma:
+- `limit` - query parameter (integer, 0 a 100, default 10)
+- `cursor` - query parameter (string)
+- `account_id` - query parameter (string, obrigatorio)
 
-Porém, o código frontend está enviando `lead` e `account` (no singular), o que viola a constraint e gera o erro.
+Alem disso, o limite maximo da API e **100 por requisicao** (Sales Navigator). As opcoes de 200 no seletor nao sao suportadas diretamente pela API.
 
-### Correção
+### Plano de correcao
 
-Ajustar o mapeamento em dois arquivos para usar os valores corretos (plural):
+**1. Edge Function (`supabase/functions/unipile-search/index.ts`)**
 
-**1. `src/components/SaveToListModal.tsx`**
+Mover `limit` e `cursor` do corpo JSON para query parameters na URL:
 
-Alterar a derivação de `listType` de:
-- `"lead"` para `"leads"`
-- `"account"` para `"accounts"`
+- Construir a URL assim: `${baseUrl}/api/v1/linkedin/search?account_id=${accountId}&limit=${limit}`
+- Quando houver cursor: `${baseUrl}/api/v1/linkedin/search?account_id=${accountId}&limit=${limit}&cursor=${cursor}`
+- Remover `limit` e `cursor` do objeto `unipileBody` (corpo JSON)
+- Quando usar cursor, o body deve conter apenas `{}` (vazio) ou ser omitido
 
-E ajustar o filtro de `compatibleLists` para comparar com os valores corretos.
+**2. Ajustar opcoes do seletor (`SearchPagination.tsx`)**
 
-**2. `src/pages/Lists.tsx`**
+- Alterar opcoes de `[25, 50, 100, 200]` para `[10, 25, 50, 100]`
+- O maximo suportado pela API e 100, entao 200 deve ser removido
 
-Ajustar as comparações de `list.list_type` nos badges e ícones para usar `"leads"` e `"accounts"` em vez de `"lead"` e `"account"`.
+**3. Ajustar default nos componentes**
 
-### Detalhes Técnicos
+- Manter `DEFAULT_PER_PAGE = 25` em Companies.tsx, Contacts.tsx e Index.tsx (ja esta assim)
 
-Arquivos modificados:
-- `src/components/SaveToListModal.tsx` - corrigir mapeamento `listType` e filtro de listas compatíveis
-- `src/pages/Lists.tsx` - corrigir comparações de tipo nos ícones e badges
+### Detalhes tecnicos
 
-Nenhuma alteração de banco de dados necessária.
+Arquivo principal: `supabase/functions/unipile-search/index.ts`
+
+Mudanca na construcao da URL (linha ~328):
+
+```text
+ANTES:
+  const unipileUrl = `${baseUrl}/api/v1/linkedin/search?account_id=${accountId}`;
+  body: JSON.stringify({ ...params, limit, cursor })
+
+DEPOIS:
+  let unipileUrl = `${baseUrl}/api/v1/linkedin/search?account_id=${accountId}&limit=${limit || 25}`;
+  if (cursor) unipileUrl += `&cursor=${encodeURIComponent(cursor)}`;
+  body: JSON.stringify(cursorOnly ? {} : searchParams)  // sem limit/cursor no body
+```
+
+Arquivo secundario: `src/components/SearchPagination.tsx`
+- Alterar `PER_PAGE_OPTIONS` de `[25, 50, 100, 200]` para `[10, 25, 50, 100]`
+
+Nenhuma alteracao de banco de dados necessaria.
+
