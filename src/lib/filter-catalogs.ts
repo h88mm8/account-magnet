@@ -1,5 +1,5 @@
 // Shared filter option catalogs for Accounts & Leads
-// IDs match LinkedIn Sales Navigator exactly
+// IDs match LinkedIn Sales Navigator geo URNs exactly
 
 export type FilterOption = {
   value: string;
@@ -59,22 +59,73 @@ export const industries: FilterOption[] = [
   { value: "3248", label: "Engenharia Robótica" },
 ];
 
+// Locations use LinkedIn geo URN numeric IDs
+// value = LinkedIn geo ID, label = display name
 export const locations: FilterOption[] = [
-  { value: "brasil", label: "Brasil" },
-  { value: "sao_paulo", label: "São Paulo" },
-  { value: "rio_de_janeiro", label: "Rio de Janeiro" },
-  { value: "minas_gerais", label: "Minas Gerais" },
-  { value: "parana", label: "Paraná" },
-  { value: "santa_catarina", label: "Santa Catarina" },
-  { value: "rio_grande_do_sul", label: "Rio Grande do Sul" },
-  { value: "bahia", label: "Bahia" },
-  { value: "distrito_federal", label: "Distrito Federal" },
-  { value: "ceara", label: "Ceará" },
-  { value: "pernambuco", label: "Pernambuco" },
-  { value: "goias", label: "Goiás" },
-  { value: "estados_unidos", label: "Estados Unidos" },
-  { value: "portugal", label: "Portugal" },
-  { value: "reino_unido", label: "Reino Unido" },
+  // Países
+  { value: "106057199", label: "Brasil" },
+  { value: "103644278", label: "Estados Unidos" },
+  { value: "100364837", label: "Portugal" },
+  { value: "101165590", label: "Reino Unido" },
+  { value: "101174742", label: "Canadá" },
+  { value: "100506914", label: "Alemanha" },
+  { value: "105015875", label: "França" },
+  { value: "103350119", label: "Espanha" },
+  { value: "103464439", label: "México" },
+  { value: "104738515", label: "Argentina" },
+  { value: "104379274", label: "Colômbia" },
+  { value: "100446943", label: "Chile" },
+
+  // Brasil — Estados
+  { value: "100364838", label: "São Paulo (Estado)" },
+  { value: "103806429", label: "Rio de Janeiro (Estado)" },
+  { value: "100501801", label: "Minas Gerais" },
+  { value: "106209057", label: "Paraná" },
+  { value: "106380113", label: "Santa Catarina" },
+  { value: "105959875", label: "Rio Grande do Sul" },
+  { value: "103537801", label: "Bahia" },
+  { value: "104212806", label: "Distrito Federal" },
+  { value: "101937022", label: "Ceará" },
+  { value: "104570964", label: "Pernambuco" },
+  { value: "102225773", label: "Goiás" },
+  { value: "104276157", label: "Pará" },
+  { value: "104585960", label: "Maranhão" },
+  { value: "105765702", label: "Amazonas" },
+  { value: "103482498", label: "Espírito Santo" },
+  { value: "102713658", label: "Mato Grosso" },
+  { value: "106367697", label: "Mato Grosso do Sul" },
+  { value: "104148498", label: "Rio Grande do Norte" },
+  { value: "103110384", label: "Paraíba" },
+  { value: "103795836", label: "Alagoas" },
+  { value: "101444498", label: "Piauí" },
+  { value: "103375837", label: "Sergipe" },
+  { value: "105207156", label: "Rondônia" },
+  { value: "103323778", label: "Tocantins" },
+  { value: "102031079", label: "Acre" },
+  { value: "100829985", label: "Amapá" },
+  { value: "102713980", label: "Roraima" },
+
+  // Brasil — Cidades principais
+  { value: "100364837", label: "São Paulo (Cidade)" },
+  { value: "103806428", label: "Rio de Janeiro (Cidade)" },
+  { value: "103730545", label: "Belo Horizonte" },
+  { value: "102713165", label: "Curitiba" },
+  { value: "106381429", label: "Porto Alegre" },
+  { value: "103049748", label: "Brasília" },
+  { value: "101325669", label: "Salvador" },
+  { value: "101117052", label: "Recife" },
+  { value: "104617901", label: "Fortaleza" },
+  { value: "106546498", label: "Florianópolis" },
+  { value: "101111856", label: "Campinas" },
+  { value: "103571309", label: "Goiânia" },
+  { value: "103194625", label: "Manaus" },
+  { value: "104071687", label: "Belém" },
+  { value: "103169498", label: "Vitória" },
+  { value: "103591973", label: "Joinville" },
+  { value: "105468703", label: "Ribeirão Preto" },
+  { value: "102947539", label: "São José dos Campos" },
+  { value: "106229424", label: "Santos" },
+  { value: "106267302", label: "Sorocaba" },
 ];
 
 export const revenueRanges: FilterOption[] = [

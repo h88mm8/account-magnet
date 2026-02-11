@@ -115,7 +115,14 @@ const Contacts = () => {
           cursorRef.current = { cursors: [], page: 1, totalCount: null, perPage: cursorRef.current.perPage, latestCursor: null };
           handleSearch(f, undefined, 1);
         }}
+        onClear={() => {
+          setResults([]);
+          setSearched(false);
+          setFilters({});
+          cursorRef.current = { cursors: [], page: 1, totalCount: null, perPage: DEFAULT_PER_PAGE, latestCursor: null };
+        }}
         isLoading={loading}
+        hasResults={searched}
       />
 
       {(searched || results.length > 0) && (

@@ -67,23 +67,22 @@ const INDUSTRY_MAP: Record<string, { id: string; text: string }> = {
   "3248": { id: "3248", text: "Robotics Engineering" },
 };
 
-const REGION_MAP: Record<string, { id: string; text: string }> = {
-  "brasil": { id: "106057199", text: "Brazil" },
-  "sao_paulo": { id: "100364837", text: "São Paulo, Brazil" },
-  "rio_de_janeiro": { id: "103806428", text: "Rio de Janeiro, Brazil" },
-  "minas_gerais": { id: "100501801", text: "Minas Gerais, Brazil" },
-  "parana": { id: "106209057", text: "Paraná, Brazil" },
-  "santa_catarina": { id: "106380113", text: "Santa Catarina, Brazil" },
-  "rio_grande_do_sul": { id: "105959875", text: "Rio Grande do Sul, Brazil" },
-  "bahia": { id: "103537801", text: "Bahia, Brazil" },
-  "distrito_federal": { id: "103644278", text: "Distrito Federal, Brazil" },
-  "ceara": { id: "101937022", text: "Ceará, Brazil" },
-  "pernambuco": { id: "104570964", text: "Pernambuco, Brazil" },
-  "goias": { id: "102225773", text: "Goiás, Brazil" },
-  "estados_unidos": { id: "103644278", text: "United States" },
-  "portugal": { id: "100364837", text: "Portugal" },
-  "reino_unido": { id: "101165590", text: "United Kingdom" },
-};
+// REGION_MAP now accepts LinkedIn geo IDs directly (values from filter-catalogs).
+// The frontend sends geo IDs as filter values, so the map key = geo ID.
+// We keep a passthrough approach: if the key is a valid geo ID, use it directly.
+function resolveRegion(
+  input: string | string[] | undefined
+): { id: string; text: string; selectionType: string }[] {
+  if (!input) return [];
+  const keys = Array.isArray(input) ? input : [input];
+  return keys
+    .filter((k) => k && k !== "any")
+    .map((k) => ({
+      id: k,
+      text: k, // The geo ID is passed as-is; Sales Navigator resolves the name
+      selectionType: "INCLUDED",
+    }));
+}
 
 // ── Sales Navigator ID mappings — Leads ──────────────────────────────
 
@@ -188,7 +187,7 @@ function buildSalesNavAccountUrl(params: {
   addFilter(filters, "COMPANY_HEADCOUNT", resolveMulti(params.companySize, COMPANY_HEADCOUNT_MAP));
   addFilter(filters, "ANNUAL_REVENUE", resolveMulti(params.revenue, ANNUAL_REVENUE_MAP));
   addFilter(filters, "INDUSTRY", resolveMulti(params.industry, INDUSTRY_MAP));
-  addFilter(filters, "REGION", resolveMulti(params.location, REGION_MAP));
+  addFilter(filters, "REGION", resolveRegion(params.location));
 
   return buildFinalUrl(base, filters, params.keywords);
 }
@@ -211,7 +210,7 @@ function buildSalesNavLeadUrl(params: {
   addFilter(filters, "SENIORITY_LEVEL", resolveMulti(params.seniority, SENIORITY_MAP));
   addFilter(filters, "FUNCTION", resolveMulti(params.jobFunction, FUNCTION_MAP));
   addFilter(filters, "INDUSTRY", resolveMulti(params.industry, INDUSTRY_MAP));
-  addFilter(filters, "REGION", resolveMulti(params.location, REGION_MAP));
+  addFilter(filters, "REGION", resolveRegion(params.location));
   addFilter(filters, "COMPANY_HEADCOUNT", resolveMulti(params.companySize, COMPANY_HEADCOUNT_MAP));
   addFilter(filters, "YEARS_OF_EXPERIENCE", resolveMulti(params.yearsOfExperience, YEARS_OF_EXPERIENCE_MAP));
   addFilter(filters, "YEARS_AT_CURRENT_COMPANY", resolveMulti(params.yearsAtCurrentCompany, YEARS_AT_CURRENT_COMPANY_MAP));
