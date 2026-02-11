@@ -1,12 +1,15 @@
 import { supabase } from "@/integrations/supabase/client";
 import { normalizeAccount, normalizeLead } from "@/lib/normalize";
-import { locations as locationsCatalog } from "@/lib/filter-catalogs";
 
 // ── Account types ────────────────────────────────────────────────────
 
 export type AccountSearchFilters = {
   keywords?: string;
   revenue?: string | string[];
+  /**
+   * Location values are treated as human-readable inputs (e.g. "Minas Gerais", "São Paulo e Região").
+   * The backend resolves them to the correct LinkedIn/Sales Navigator IDs before searching.
+   */
   location?: string | string[];
   industry?: string | string[];
   companySize?: string | string[];
@@ -28,6 +31,10 @@ export type LeadSearchFilters = {
   seniority?: string[];
   jobFunction?: string[];
   industry?: string[];
+  /**
+   * Location values are treated as human-readable inputs (e.g. "Rio de Janeiro", "Brasil").
+   * The backend resolves them to the correct LinkedIn/Sales Navigator IDs before searching.
+   */
   location?: string[];
   companySize?: string[];
   yearsOfExperience?: string[];
@@ -72,6 +79,12 @@ export type SearchResponse<T> = {
   pagination: PaginationInfo;
 };
 
+function buildLocationFallback(location?: string | string[]): string {
+  if (!location) return "";
+  const values = Array.isArray(location) ? location : [location];
+  return values.map((v) => String(v || "").trim()).filter(Boolean).join(", ");
+}
+
 // ── API calls ────────────────────────────────────────────────────────
 
 export async function searchAccounts(
@@ -91,7 +104,6 @@ export async function searchAccounts(
     throw new Error(error.message || "Erro ao buscar empresas");
   }
 
-  // Build location fallback from applied filter labels
   const locationFallback = buildLocationFallback(filters.location);
 
   return {
@@ -105,19 +117,6 @@ export async function searchAccounts(
     cursor: data.cursor || null,
     paging: data.paging || { start: 0, count: 0, total: null },
   };
-}
-
-function buildLocationFallback(location?: string | string[]): string {
-  if (!location) return "";
-  const ids = Array.isArray(location) ? location : [location];
-  if (ids.length === 0) return "";
-  const labels = ids
-    .map((id) => {
-      const found = locationsCatalog.find((l) => l.value === id);
-      return found?.label || "";
-    })
-    .filter(Boolean);
-  return labels.join(", ");
 }
 
 export async function searchLeads(
@@ -137,9 +136,18 @@ export async function searchLeads(
     throw new Error(error.message || "Erro ao buscar leads");
   }
 
+  const locationFallback = buildLocationFallback(filters.location);
+
   return {
-    items: (data.items || []).map((item: Record<string, unknown>) => normalizeLead(item)),
+    items: (data.items || []).map((item: Record<string, unknown>) => {
+      const normalized = normalizeLead(item);
+      if (!normalized.location && locationFallback) {
+        normalized.location = locationFallback;
+      }
+      return normalized;
+    }),
     cursor: data.cursor || null,
     paging: data.paging || { start: 0, count: 0, total: null },
   };
 }
+

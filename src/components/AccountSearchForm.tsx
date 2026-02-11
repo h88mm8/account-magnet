@@ -26,6 +26,9 @@ export function AccountSearchForm({ onSearch, onClear, isLoading, hasResults }: 
   const [companySize, setCompanySize] = useState<string[]>([]);
   const [revenue, setRevenue] = useState<string[]>([]);
 
+  // Envia o texto (ex: "Minas Gerais") e o backend resolve para o ID correto
+  const locationOptions = locations.map((l) => ({ value: l.label, label: l.label }));
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSearch({
@@ -67,7 +70,7 @@ export function AccountSearchForm({ onSearch, onClear, isLoading, hasResults }: 
                 Localização
               </label>
               <MultiSelect
-                options={locations}
+                options={locationOptions}
                 value={location}
                 onChange={setLocation}
                 placeholder="Qualquer"
