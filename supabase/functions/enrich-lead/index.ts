@@ -135,8 +135,14 @@ serve(async (req) => {
     if (needsFallback) {
       console.log("Step 2: Trying Apollo fallback...");
       const normalizedLinkedin = normalizeLinkedInUrl(linkedinUrl || item.linkedin_url);
+      const resolvedFirst = firstName || item.name?.split(" ")[0] || "";
+      const resolvedLast = lastName || item.name?.split(" ").slice(1).join(" ") || "";
+      const resolvedCompany = company || item.company || "";
+
       const hasLinkedin = !!normalizedLinkedin;
-      const hasNameAndOrg = !!(firstName && lastName && company);
+      const hasNameAndOrg = !!(resolvedFirst && resolvedLast && resolvedCompany);
+
+      console.log("Apollo identifiers:", { hasLinkedin, hasNameAndOrg, normalizedLinkedin, resolvedFirst, resolvedLast, resolvedCompany });
 
       if (!hasLinkedin && !hasNameAndOrg) {
         console.warn("Apollo skipped: no strong identifier (linkedin_url or name+org)");
@@ -144,9 +150,9 @@ serve(async (req) => {
         try {
           const apolloResult = await enrichWithApollo(
             {
-              firstName: firstName || item.name?.split(" ")[0],
-              lastName: lastName || item.name?.split(" ").slice(1).join(" "),
-              company: company || item.company,
+              firstName: resolvedFirst,
+              lastName: resolvedLast,
+              company: resolvedCompany,
               domain,
               linkedinUrl: normalizedLinkedin,
               email: item.email,
@@ -312,7 +318,7 @@ async function enrichWithApollo(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Api-Key": apiKey,
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(body),
   });
