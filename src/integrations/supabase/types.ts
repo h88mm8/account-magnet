@@ -43,11 +43,18 @@ export type Database = {
       }
       prospect_list_items: {
         Row: {
+          apify_called: boolean | null
+          apify_email_found: boolean | null
+          apify_finished: boolean | null
+          apify_run_id: string | null
+          apollo_called: boolean | null
+          apollo_reason: string | null
           company: string | null
           created_at: string
           email: string | null
           email_checked_at: string | null
           enrichment_source: string | null
+          enrichment_status: string | null
           external_id: string | null
           headcount: string | null
           id: string
@@ -64,11 +71,18 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          apify_called?: boolean | null
+          apify_email_found?: boolean | null
+          apify_finished?: boolean | null
+          apify_run_id?: string | null
+          apollo_called?: boolean | null
+          apollo_reason?: string | null
           company?: string | null
           created_at?: string
           email?: string | null
           email_checked_at?: string | null
           enrichment_source?: string | null
+          enrichment_status?: string | null
           external_id?: string | null
           headcount?: string | null
           id?: string
@@ -85,11 +99,18 @@ export type Database = {
           user_id: string
         }
         Update: {
+          apify_called?: boolean | null
+          apify_email_found?: boolean | null
+          apify_finished?: boolean | null
+          apify_run_id?: string | null
+          apollo_called?: boolean | null
+          apollo_reason?: string | null
           company?: string | null
           created_at?: string
           email?: string | null
           email_checked_at?: string | null
           enrichment_source?: string | null
+          enrichment_status?: string | null
           external_id?: string | null
           headcount?: string | null
           id?: string

@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.enrich-lead]
 verify_jwt = false
+
+[functions.webhooks-apify]
+verify_jwt = false
