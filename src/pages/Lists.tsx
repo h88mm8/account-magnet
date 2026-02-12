@@ -129,8 +129,10 @@ export default function Lists() {
         },
       });
 
-      if (error) throw error;
-
+      if (error) {
+        console.warn("Enrich invoke error (non-fatal):", error);
+        // Don't throw — check data payload for status
+      }
       if (data.alreadyChecked) {
         setLoading((prev) => { const next = new Set(prev); next.delete(item.id); return next; });
         toast({

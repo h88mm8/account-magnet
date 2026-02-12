@@ -234,7 +234,7 @@ serve(async (req) => {
 
       return new Response(
         JSON.stringify({ found: false, enrichmentError: "Falha no enrichment", status: "error" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
   } catch (error) {
@@ -246,7 +246,7 @@ serve(async (req) => {
         found: false,
         status: "error",
       }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
@@ -381,7 +381,9 @@ async function enrichWithApollo(
   if (searchType === "email") {
     body.reveal_personal_emails = true;
   } else {
-    body.reveal_phone_number = true;
+    // Apollo requires webhook_url for reveal_phone_number — not supported in this flow
+    console.log("Apollo: phone enrichment skipped (requires webhook_url)");
+    return null;
   }
 
   if (params.firstName) body.first_name = params.firstName;
