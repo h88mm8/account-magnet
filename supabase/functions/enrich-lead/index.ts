@@ -68,16 +68,39 @@ serve(async (req) => {
       });
     }
 
-    // Check if data already exists
-    if (searchType === "email" && item.email) {
+    // ============ ANTI-REPROCESSING CHECK ============
+    const checkedAtField = searchType === "email" ? "email_checked_at" : "phone_checked_at";
+    if (item[checkedAtField]) {
+      const dataField = searchType === "email" ? "email" : "phone";
       return new Response(
-        JSON.stringify({ email: item.email, source: item.enrichment_source, alreadyExists: true }),
+        JSON.stringify({
+          [dataField]: item[dataField] || null,
+          source: item.enrichment_source,
+          alreadyChecked: true,
+          found: !!item[dataField],
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-    if (searchType === "phone" && item.phone) {
+
+    // ============ CONCURRENCY LOCK (optimistic) ============
+    // Set checked_at immediately to prevent concurrent duplicate calls
+    const { error: lockError, data: lockData } = await supabase
+      .from("prospect_list_items")
+      .update({ [checkedAtField]: new Date().toISOString() })
+      .eq("id", itemId)
+      .is(checkedAtField, null)
+      .select("id")
+      .single();
+
+    if (lockError || !lockData) {
+      // Another request already locked this — return early
       return new Response(
-        JSON.stringify({ phone: item.phone, source: item.enrichment_source, alreadyExists: true }),
+        JSON.stringify({
+          alreadyChecked: true,
+          found: false,
+          message: "Enrichment already in progress or completed",
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -86,46 +109,55 @@ serve(async (req) => {
     let phone: string | null = null;
     let source: string | null = null;
 
-    // ============ STEP 1: Apify ============
-    console.log("Step 1: Trying Apify enrichment...");
+    // ============ STEP 1: Apify (dedicated contact enrichment actor) ============
+    console.log("Step 1: Trying Apify contact enrichment...");
     try {
       const apifyResult = await enrichWithApify(linkedinUrl, APIFY_API_KEY);
       if (apifyResult) {
-        if (apifyResult.email) email = apifyResult.email;
-        if (apifyResult.phone) phone = apifyResult.phone;
-        if (email || phone) source = "apify";
-        console.log("Apify result:", { email, phone });
+        if (searchType === "email" && apifyResult.email) {
+          email = apifyResult.email;
+          source = "apify";
+        }
+        if (searchType === "phone" && apifyResult.phone) {
+          phone = apifyResult.phone;
+          source = "apify";
+        }
+        console.log("Apify result:", { email: apifyResult.email, phone: apifyResult.phone });
       }
     } catch (err) {
       console.error("Apify error:", err);
     }
 
-    // ============ STEP 2: Apollo (fallback) ============
-    if ((searchType === "email" && !email) || (searchType === "phone" && !phone)) {
+    // ============ STEP 2: Apollo (fallback, scoped by searchType) ============
+    const needsFallback =
+      (searchType === "email" && !email) || (searchType === "phone" && !phone);
+
+    if (needsFallback) {
       console.log("Step 2: Trying Apollo fallback...");
       try {
         const apolloResult = await enrichWithApollo(
           { firstName, lastName, company, domain, linkedinUrl, email: item.email },
-          APOLLO_API_KEY
+          APOLLO_API_KEY,
+          searchType
         );
         if (apolloResult) {
-          if (!email && apolloResult.email) {
+          if (searchType === "email" && !email && apolloResult.email) {
             email = apolloResult.email;
             source = source || "apollo";
           }
-          if (!phone && apolloResult.phone) {
+          if (searchType === "phone" && !phone && apolloResult.phone) {
             phone = apolloResult.phone;
             source = source || "apollo";
           }
-          console.log("Apollo result:", { email: apolloResult.email, phone: apolloResult.phone });
+          console.log("Apollo result:", apolloResult);
         }
       } catch (err) {
         console.error("Apollo error:", err);
       }
     }
 
-    // ============ Save to DB ============
-    const updateData: Record<string, string> = {};
+    // ============ Save results to DB ============
+    const updateData: Record<string, string | null> = {};
     if (email) updateData.email = email;
     if (phone) updateData.phone = phone;
     if (source) updateData.enrichment_source = source;
@@ -142,15 +174,10 @@ serve(async (req) => {
     }
 
     const found =
-      (searchType === "email" && email) || (searchType === "phone" && phone);
+      (searchType === "email" && !!email) || (searchType === "phone" && !!phone);
 
     return new Response(
-      JSON.stringify({
-        email,
-        phone,
-        source,
-        found: !!found,
-      }),
+      JSON.stringify({ email, phone, source, found }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
@@ -163,7 +190,7 @@ serve(async (req) => {
 });
 
 // =============================================
-// Apify: Run LinkedIn profile scraper actor
+// Apify: Dedicated contact enrichment actor
 // =============================================
 async function enrichWithApify(
   linkedinUrl: string | null,
@@ -171,7 +198,7 @@ async function enrichWithApify(
 ): Promise<{ email?: string; phone?: string } | null> {
   if (!linkedinUrl) return null;
 
-  const actorId = "curious_coder~linkedin-profile-scraper";
+  const actorId = "dev_fusion~linkedin-profile-scraper";
   const runUrl = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${apiKey}`;
 
   const response = await fetch(runUrl, {
@@ -192,14 +219,17 @@ async function enrichWithApify(
 
   const profile = data[0];
 
-  // Try multiple possible field names from Apify actor output
   const email =
     profile.email ||
     profile.emailAddress ||
     profile.emails?.[0] ||
     profile.contact?.email ||
     null;
+
+  // Prioritize mobile number
   const phone =
+    profile.mobileNumber ||
+    profile.mobile_number ||
     profile.phone ||
     profile.phoneNumber ||
     profile.phones?.[0] ||
@@ -210,7 +240,7 @@ async function enrichWithApify(
 }
 
 // =============================================
-// Apollo: People Enrichment (fallback)
+// Apollo: People Enrichment (scoped by searchType)
 // =============================================
 async function enrichWithApollo(
   params: {
@@ -221,12 +251,19 @@ async function enrichWithApollo(
     linkedinUrl?: string | null;
     email?: string | null;
   },
-  apiKey: string
+  apiKey: string,
+  searchType: "email" | "phone"
 ): Promise<{ email?: string; phone?: string } | null> {
-  const body: Record<string, unknown> = {
-    reveal_personal_emails: true,
-    reveal_phone_number: true,
-  };
+  const body: Record<string, unknown> = {};
+
+  // Only request what we need based on searchType
+  if (searchType === "email") {
+    body.reveal_personal_emails = true;
+    body.reveal_phone_number = false;
+  } else {
+    body.reveal_personal_emails = false;
+    body.reveal_phone_number = true;
+  }
 
   if (params.firstName) body.first_name = params.firstName;
   if (params.lastName) body.last_name = params.lastName;
@@ -253,12 +290,17 @@ async function enrichWithApollo(
   const person = data.person;
   if (!person) return null;
 
-  const email = person.email || person.personal_emails?.[0] || null;
-  const phone =
-    person.phone_numbers?.find((p: { sanitized_number?: string }) => p.sanitized_number)
-      ?.sanitized_number ||
-    person.mobile_phone ||
-    null;
+  const result: { email?: string; phone?: string } = {};
 
-  return { email, phone };
+  if (searchType === "email") {
+    result.email = person.email || person.personal_emails?.[0] || null;
+  } else {
+    result.phone =
+      person.phone_numbers?.find((p: { sanitized_number?: string }) => p.sanitized_number)
+        ?.sanitized_number ||
+      person.mobile_phone ||
+      null;
+  }
+
+  return result;
 }

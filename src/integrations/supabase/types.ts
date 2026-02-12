@@ -46,6 +46,7 @@ export type Database = {
           company: string | null
           created_at: string
           email: string | null
+          email_checked_at: string | null
           enrichment_source: string | null
           external_id: string | null
           headcount: string | null
@@ -57,6 +58,7 @@ export type Database = {
           location: string | null
           name: string
           phone: string | null
+          phone_checked_at: string | null
           raw_data: Json | null
           title: string | null
           user_id: string
@@ -65,6 +67,7 @@ export type Database = {
           company?: string | null
           created_at?: string
           email?: string | null
+          email_checked_at?: string | null
           enrichment_source?: string | null
           external_id?: string | null
           headcount?: string | null
@@ -76,6 +79,7 @@ export type Database = {
           location?: string | null
           name: string
           phone?: string | null
+          phone_checked_at?: string | null
           raw_data?: Json | null
           title?: string | null
           user_id: string
@@ -84,6 +88,7 @@ export type Database = {
           company?: string | null
           created_at?: string
           email?: string | null
+          email_checked_at?: string | null
           enrichment_source?: string | null
           external_id?: string | null
           headcount?: string | null
@@ -95,6 +100,7 @@ export type Database = {
           location?: string | null
           name?: string
           phone?: string | null
+          phone_checked_at?: string | null
           raw_data?: Json | null
           title?: string | null
           user_id?: string

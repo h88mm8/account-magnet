@@ -58,10 +58,12 @@ export default function Lists() {
 
       if (error) throw error;
 
-      if (data.alreadyExists) {
+      if (data.alreadyChecked) {
         toast({
-          title: searchType === "email" ? "Email já encontrado" : "Telefone já encontrado",
-          description: searchType === "email" ? data.email : data.phone,
+          title: "Já verificado",
+          description: data.found
+            ? (searchType === "email" ? data.email : data.phone)
+            : `${searchType === "email" ? "Email" : "Telefone"} já foi buscado anteriormente sem resultado.`,
         });
       } else if (data.found) {
         toast({
@@ -72,11 +74,30 @@ export default function Lists() {
         setListItems((prev) =>
           prev.map((i) =>
             i.id === item.id
-              ? { ...i, ...(data.email && { email: data.email }), ...(data.phone && { phone: data.phone }), enrichment_source: data.source }
+              ? {
+                  ...i,
+                  ...(data.email && { email: data.email }),
+                  ...(data.phone && { phone: data.phone }),
+                  enrichment_source: data.source,
+                  ...(searchType === "email" && { email_checked_at: new Date().toISOString() }),
+                  ...(searchType === "phone" && { phone_checked_at: new Date().toISOString() }),
+                }
               : i
           )
         );
       } else {
+        // Not found — still update local checked_at to disable button
+        setListItems((prev) =>
+          prev.map((i) =>
+            i.id === item.id
+              ? {
+                  ...i,
+                  ...(searchType === "email" && { email_checked_at: new Date().toISOString() }),
+                  ...(searchType === "phone" && { phone_checked_at: new Date().toISOString() }),
+                }
+              : i
+          )
+        );
         toast({
           title: "Dado não encontrado",
           description: `Não foi possível encontrar o ${searchType === "email" ? "email" : "telefone"} deste lead.`,
@@ -301,7 +322,7 @@ export default function Lists() {
                                 variant="outline"
                                 size="sm"
                                 className="h-7 gap-1 text-xs"
-                                disabled={!!item.email || enrichingEmail.has(item.id)}
+                                disabled={!!item.email_checked_at || enrichingEmail.has(item.id)}
                                 onClick={() => handleEnrich(item, "email")}
                               >
                                 {enrichingEmail.has(item.id) ? (
@@ -309,13 +330,13 @@ export default function Lists() {
                                 ) : (
                                   <Mail className="h-3 w-3" />
                                 )}
-                                {item.email ? "Encontrado" : "Buscar Email"}
+                                {item.email ? "Encontrado" : item.email_checked_at ? "Não encontrado" : "Buscar Email"}
                               </Button>
                               <Button
                                 variant="outline"
                                 size="sm"
                                 className="h-7 gap-1 text-xs"
-                                disabled={!!item.phone || enrichingPhone.has(item.id)}
+                                disabled={!!item.phone_checked_at || enrichingPhone.has(item.id)}
                                 onClick={() => handleEnrich(item, "phone")}
                               >
                                 {enrichingPhone.has(item.id) ? (
@@ -323,7 +344,7 @@ export default function Lists() {
                                 ) : (
                                   <Phone className="h-3 w-3" />
                                 )}
-                                {item.phone ? "Encontrado" : "Buscar Celular"}
+                                {item.phone ? "Encontrado" : item.phone_checked_at ? "Não encontrado" : "Buscar Celular"}
                               </Button>
                             </div>
                           </TableCell>
