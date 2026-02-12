@@ -134,25 +134,42 @@ serve(async (req) => {
 
     if (needsFallback) {
       console.log("Step 2: Trying Apollo fallback...");
-      try {
-        const apolloResult = await enrichWithApollo(
-          { firstName, lastName, company, domain, linkedinUrl, email: item.email },
-          APOLLO_API_KEY,
-          searchType
-        );
-        if (apolloResult) {
-          if (searchType === "email" && !email && apolloResult.email) {
-            email = apolloResult.email;
-            source = source || "apollo";
+      const normalizedLinkedin = normalizeLinkedInUrl(linkedinUrl || item.linkedin_url);
+      const hasLinkedin = !!normalizedLinkedin;
+      const hasNameAndOrg = !!(firstName && lastName && company);
+
+      if (!hasLinkedin && !hasNameAndOrg) {
+        console.warn("Apollo skipped: no strong identifier (linkedin_url or name+org)");
+      } else {
+        try {
+          const apolloResult = await enrichWithApollo(
+            {
+              firstName: firstName || item.name?.split(" ")[0],
+              lastName: lastName || item.name?.split(" ").slice(1).join(" "),
+              company: company || item.company,
+              domain,
+              linkedinUrl: normalizedLinkedin,
+              email: item.email,
+            },
+            APOLLO_API_KEY,
+            searchType
+          );
+          if (apolloResult) {
+            if (searchType === "email" && !email && apolloResult.email) {
+              email = apolloResult.email;
+              source = source || "apollo";
+            }
+            if (searchType === "phone" && !phone && apolloResult.phone) {
+              phone = apolloResult.phone;
+              source = source || "apollo";
+            }
+            console.log("Apollo result:", apolloResult);
+          } else {
+            console.log("Apollo: no matching person found");
           }
-          if (searchType === "phone" && !phone && apolloResult.phone) {
-            phone = apolloResult.phone;
-            source = source || "apollo";
-          }
-          console.log("Apollo result:", apolloResult);
+        } catch (err) {
+          console.error("Apollo matching error:", err);
         }
-      } catch (err) {
-        console.error("Apollo error:", err);
       }
     }
 
@@ -240,7 +257,25 @@ async function enrichWithApify(
 }
 
 // =============================================
-// Apollo: People Enrichment (scoped by searchType)
+// LinkedIn URL Normalization
+// =============================================
+function normalizeLinkedInUrl(url: string | null | undefined): string | null {
+  if (!url || typeof url !== "string") return null;
+  let cleaned = url.trim();
+  if (!cleaned) return null;
+
+  // Remove trailing slashes
+  cleaned = cleaned.replace(/\/+$/, "");
+
+  // Extract the /in/username part
+  const match = cleaned.match(/(?:linkedin\.com)?\/?in\/([a-zA-Z0-9_-]+)/);
+  if (!match) return null;
+
+  return `https://www.linkedin.com/in/${match[1]}`;
+}
+
+// =============================================
+// Apollo: People Match (scoped by searchType)
 // =============================================
 async function enrichWithApollo(
   params: {
@@ -259,18 +294,19 @@ async function enrichWithApollo(
   // Only request what we need based on searchType
   if (searchType === "email") {
     body.reveal_personal_emails = true;
-    body.reveal_phone_number = false;
   } else {
-    body.reveal_personal_emails = false;
     body.reveal_phone_number = true;
   }
 
+  // Add identifiers — linkedin_url is the strongest
+  if (params.linkedinUrl) body.linkedin_url = params.linkedinUrl;
   if (params.firstName) body.first_name = params.firstName;
   if (params.lastName) body.last_name = params.lastName;
   if (params.company) body.organization_name = params.company;
   if (params.domain) body.domain = params.domain;
-  if (params.linkedinUrl) body.linkedin_url = params.linkedinUrl;
   if (params.email) body.email = params.email;
+
+  console.log("Apollo /people/match payload:", JSON.stringify(body));
 
   const response = await fetch("https://api.apollo.io/api/v1/people/match", {
     method: "POST",
@@ -283,21 +319,33 @@ async function enrichWithApollo(
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Apollo error [${response.status}]: ${text}`);
+    throw new Error(`Apollo match error [${response.status}]: ${text}`);
   }
 
   const data = await response.json();
   const person = data.person;
-  if (!person) return null;
+  if (!person) {
+    console.log("Apollo: person is null — no match found for given identifiers");
+    return null;
+  }
+
+  console.log("Apollo matched person:", person.id, person.name);
 
   const result: { email?: string; phone?: string } = {};
 
   if (searchType === "email") {
     result.email = person.email || person.personal_emails?.[0] || null;
   } else {
+    // Prioritize mobile/cell phone
+    const mobile = person.phone_numbers?.find(
+      (p: { type?: string; sanitized_number?: string }) =>
+        p.type === "mobile" && p.sanitized_number
+    );
     result.phone =
-      person.phone_numbers?.find((p: { sanitized_number?: string }) => p.sanitized_number)
-        ?.sanitized_number ||
+      mobile?.sanitized_number ||
+      person.phone_numbers?.find(
+        (p: { sanitized_number?: string }) => p.sanitized_number
+      )?.sanitized_number ||
       person.mobile_phone ||
       null;
   }
