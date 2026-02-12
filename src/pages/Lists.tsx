@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { List, Trash2, Pencil, Search, ChevronRight, Building2, User, X, MapPin, Briefcase, Users, Factory, UserCircle, Mail, Phone, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,12 +35,85 @@ export default function Lists() {
   const [enrichingEmail, setEnrichingEmail] = useState<Set<string>>(new Set());
   const [enrichingPhone, setEnrichingPhone] = useState<Set<string>>(new Set());
 
+  // Subscribe to realtime updates for enrichment results
+  useEffect(() => {
+    const channel = supabase
+      .channel('enrichment-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'prospect_list_items',
+        },
+        (payload) => {
+          const updated = payload.new as ProspectListItem & {
+            enrichment_status?: string;
+          };
+          if (updated.enrichment_status === "done" || updated.enrichment_status === "error") {
+            // Update local state with the enrichment result
+            setListItems((prev) =>
+              prev.map((i) =>
+                i.id === updated.id ? { ...i, ...updated } : i
+              )
+            );
+
+            // Remove from loading sets
+            setEnrichingEmail((prev) => {
+              const next = new Set(prev);
+              next.delete(updated.id);
+              return next;
+            });
+            setEnrichingPhone((prev) => {
+              const next = new Set(prev);
+              next.delete(updated.id);
+              return next;
+            });
+
+            // Show toast based on result
+            if (updated.email && !item_had_email.current.has(updated.id)) {
+              toast({ title: "Email encontrado!", description: `${updated.email} (via ${updated.enrichment_source})` });
+            } else if (updated.phone && !item_had_phone.current.has(updated.id)) {
+              toast({ title: "Telefone encontrado!", description: `${updated.phone} (via ${updated.enrichment_source})` });
+            } else if (updated.enrichment_status === "error") {
+              toast({ title: "Falha no enrichment", description: "Erro ao buscar dados do lead.", variant: "destructive" });
+            } else if (updated.enrichment_status === "done") {
+              // Check if this was a processing item that finished without finding data
+              if (enrichingEmail.has(updated.id) || enrichingPhone.has(updated.id)) {
+                toast({ title: "Dado não encontrado", description: "Busca concluída sem resultado.", variant: "destructive" });
+              }
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedListId]);
+
+  // Track which items already had email/phone to avoid duplicate toasts
+  const item_had_email = useRef<Set<string>>(new Set());
+  const item_had_phone = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const emailSet = new Set<string>();
+    const phoneSet = new Set<string>();
+    listItems.forEach((i) => {
+      if (i.email) emailSet.add(i.id);
+      if (i.phone) phoneSet.add(i.id);
+    });
+    item_had_email.current = emailSet;
+    item_had_phone.current = phoneSet;
+  }, [listItems]);
+
   const handleEnrich = async (item: ProspectListItem, searchType: "email" | "phone") => {
     const setLoading = searchType === "email" ? setEnrichingEmail : setEnrichingPhone;
     setLoading((prev) => new Set(prev).add(item.id));
 
     try {
-      // Parse names from item.name
       const nameParts = item.name.split(" ");
       const firstName = nameParts[0] || "";
       const lastName = nameParts.slice(1).join(" ") || "";
@@ -59,63 +132,65 @@ export default function Lists() {
       if (error) throw error;
 
       if (data.alreadyChecked) {
+        setLoading((prev) => { const next = new Set(prev); next.delete(item.id); return next; });
         toast({
           title: "Já verificado",
           description: data.found
             ? (searchType === "email" ? data.email : data.phone)
             : `${searchType === "email" ? "Email" : "Telefone"} já foi buscado anteriormente sem resultado.`,
         });
-      } else if (data.found) {
-        toast({
-          title: searchType === "email" ? "Email encontrado!" : "Telefone encontrado!",
-          description: `${searchType === "email" ? data.email : data.phone} (via ${data.source})`,
-        });
-        // Update local state
-        setListItems((prev) =>
-          prev.map((i) =>
-            i.id === item.id
-              ? {
-                  ...i,
-                  ...(data.email && { email: data.email }),
-                  ...(data.phone && { phone: data.phone }),
-                  enrichment_source: data.source,
-                  ...(searchType === "email" && { email_checked_at: new Date().toISOString() }),
-                  ...(searchType === "phone" && { phone_checked_at: new Date().toISOString() }),
-                }
-              : i
-          )
-        );
-      } else {
-        // Not found — still update local checked_at to disable button
-        setListItems((prev) =>
-          prev.map((i) =>
-            i.id === item.id
-              ? {
-                  ...i,
-                  ...(searchType === "email" && { email_checked_at: new Date().toISOString() }),
-                  ...(searchType === "phone" && { phone_checked_at: new Date().toISOString() }),
-                }
-              : i
-          )
-        );
-        toast({
-          title: "Dado não encontrado",
-          description: `Não foi possível encontrar o ${searchType === "email" ? "email" : "telefone"} deste lead.`,
-          variant: "destructive",
-        });
+      } else if (data.status === "processing") {
+        // Async flow — keep spinner, realtime will update
+        toast({ title: "Buscando...", description: "O enriquecimento está em andamento. Aguarde." });
+      } else if (data.status === "done") {
+        // Synchronous result (Apollo direct, no Apify)
+        setLoading((prev) => { const next = new Set(prev); next.delete(item.id); return next; });
+        if (data.found) {
+          toast({
+            title: searchType === "email" ? "Email encontrado!" : "Telefone encontrado!",
+            description: `${searchType === "email" ? data.email : data.phone} (via ${data.source})`,
+          });
+          setListItems((prev) =>
+            prev.map((i) =>
+              i.id === item.id
+                ? {
+                    ...i,
+                    ...(data.email && { email: data.email }),
+                    ...(data.phone && { phone: data.phone }),
+                    enrichment_source: data.source,
+                    enrichment_status: "done",
+                    ...(searchType === "email" && { email_checked_at: new Date().toISOString() }),
+                    ...(searchType === "phone" && { phone_checked_at: new Date().toISOString() }),
+                  }
+                : i
+            )
+          );
+        } else {
+          setListItems((prev) =>
+            prev.map((i) =>
+              i.id === item.id
+                ? {
+                    ...i,
+                    enrichment_status: "done",
+                    ...(searchType === "email" && { email_checked_at: new Date().toISOString() }),
+                    ...(searchType === "phone" && { phone_checked_at: new Date().toISOString() }),
+                  }
+                : i
+            )
+          );
+          toast({ title: "Dado não encontrado", description: "Busca concluída sem resultado.", variant: "destructive" });
+        }
+      } else if (data.status === "error") {
+        setLoading((prev) => { const next = new Set(prev); next.delete(item.id); return next; });
+        toast({ title: "Falha no enrichment", description: data.enrichmentError || "Erro desconhecido", variant: "destructive" });
       }
     } catch (err) {
       console.error("Enrich error:", err);
+      setLoading((prev) => { const next = new Set(prev); next.delete(item.id); return next; });
       toast({
         title: "Erro no enriquecimento",
         description: err instanceof Error ? err.message : "Erro desconhecido",
         variant: "destructive",
-      });
-    } finally {
-      setLoading((prev) => {
-        const next = new Set(prev);
-        next.delete(item.id);
-        return next;
       });
     }
   };

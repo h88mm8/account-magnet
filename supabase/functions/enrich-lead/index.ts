@@ -83,10 +83,21 @@ serve(async (req) => {
       );
     }
 
+    // Check if already processing
+    if (item.enrichment_status === "processing") {
+      return new Response(
+        JSON.stringify({ status: "processing", message: "Enrichment already in progress" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // ============ CONCURRENCY LOCK (optimistic) ============
     const { error: lockError, data: lockData } = await supabase
       .from("prospect_list_items")
-      .update({ [checkedAtField]: new Date().toISOString() })
+      .update({
+        [checkedAtField]: new Date().toISOString(),
+        enrichment_status: "processing",
+      })
       .eq("id", itemId)
       .is(checkedAtField, null)
       .select("id")
@@ -103,126 +114,129 @@ serve(async (req) => {
       );
     }
 
-    let email: string | null = null;
-    let phone: string | null = null;
-    let source: string | null = null;
-    let enrichmentError: string | null = null;
-
-    // ============ STEP 1: Apify (LinkedIn public URL only) ============
+    // ============ RESOLVE IDENTIFIERS ============
     const publicLinkedinUrl = toPublicLinkedInUrl(linkedinUrl || item.linkedin_url);
+    const resolvedFirst = firstName || item.name?.split(" ")[0] || "";
+    const resolvedLast = lastName || item.name?.split(" ").slice(1).join(" ") || "";
+    const resolvedCompany = company || item.company || "";
 
+    // ============ STEP 1: Try Apify (async with webhook) ============
     if (publicLinkedinUrl) {
-      console.log("Step 1: Trying Apify with public URL:", publicLinkedinUrl);
+      console.log("Step 1: Starting Apify async job with public URL:", publicLinkedinUrl);
+
       try {
-        const apifyResult = await enrichWithApify(publicLinkedinUrl, APIFY_API_KEY);
-        if (apifyResult) {
-          if (searchType === "email" && apifyResult.email) {
-            email = apifyResult.email;
-            source = "apify";
-          }
-          if (searchType === "phone" && apifyResult.phone) {
-            phone = apifyResult.phone;
-            source = "apify";
-          }
-          console.log("Apify result:", { email: apifyResult.email, phone: apifyResult.phone });
-        }
+        const webhookUrl = `${SUPABASE_URL}/functions/v1/webhooks-apify`;
+        const apifyRunId = await startApifyJob(
+          publicLinkedinUrl,
+          APIFY_API_KEY,
+          webhookUrl,
+          itemId,
+          searchType,
+          resolvedFirst,
+          resolvedLast,
+          resolvedCompany,
+          domain || ""
+        );
+
+        console.log("Apify job started, runId:", apifyRunId);
+
+        // Save run metadata
+        await supabase
+          .from("prospect_list_items")
+          .update({
+            apify_run_id: apifyRunId,
+            apify_called: true,
+          })
+          .eq("id", itemId);
+
+        // Return immediately — webhook will handle the rest
+        return new Response(
+          JSON.stringify({ status: "processing" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       } catch (err) {
-        console.error("Apify error:", err);
+        console.error("Apify start error:", err);
+        // Apify failed to start — fall through to Apollo directly
+        await supabase
+          .from("prospect_list_items")
+          .update({ apify_called: true, apify_finished: true, apify_email_found: false })
+          .eq("id", itemId);
       }
     } else {
       console.log("Step 1: Apify skipped — no valid public LinkedIn URL available");
-    }
-
-    // ============ STEP 2: Apollo fallback (scoped by searchType) ============
-    const needsFallback =
-      (searchType === "email" && !email) || (searchType === "phone" && !phone);
-
-    if (needsFallback) {
-      console.log("Step 2: Trying Apollo fallback...");
-      const normalizedLinkedin = normalizeLinkedInUrl(linkedinUrl || item.linkedin_url);
-      const resolvedFirst = firstName || item.name?.split(" ")[0] || "";
-      const resolvedLast = lastName || item.name?.split(" ").slice(1).join(" ") || "";
-      const resolvedCompany = company || item.company || "";
-
-      const hasLinkedin = !!normalizedLinkedin;
-      const hasNameAndOrg = !!(resolvedFirst && resolvedLast && resolvedCompany);
-
-      console.log("Apollo identifiers:", {
-        hasLinkedin,
-        hasNameAndOrg,
-        normalizedLinkedin,
-        resolvedFirst,
-        resolvedLast,
-        resolvedCompany,
-      });
-
-      if (!hasLinkedin && !hasNameAndOrg) {
-        console.warn("Apollo skipped: no strong identifier (linkedin_url or name+org)");
-      } else {
-        try {
-          const apolloResult = await enrichWithApollo(
-            {
-              firstName: resolvedFirst,
-              lastName: resolvedLast,
-              company: resolvedCompany,
-              domain,
-              linkedinUrl: normalizedLinkedin,
-              email: item.email,
-            },
-            APOLLO_API_KEY,
-            searchType
-          );
-          if (apolloResult) {
-            if (searchType === "email" && !email && apolloResult.email) {
-              email = apolloResult.email;
-              source = source || "apollo";
-            }
-            if (searchType === "phone" && !phone && apolloResult.phone) {
-              phone = apolloResult.phone;
-              source = source || "apollo";
-            }
-            console.log("Apollo result:", apolloResult);
-          } else {
-            console.log("Apollo: no matching person found");
-          }
-        } catch (err) {
-          console.error("Apollo matching error:", err);
-          enrichmentError = err instanceof Error ? err.message : "Apollo error";
-        }
-      }
-    }
-
-    // ============ Save results to DB ============
-    const updateData: Record<string, string | null> = {};
-    if (email) updateData.email = email;
-    if (phone) updateData.phone = phone;
-    if (source) updateData.enrichment_source = source;
-
-    if (Object.keys(updateData).length > 0) {
-      const { error: updateError } = await supabase
+      await supabase
         .from("prospect_list_items")
-        .update(updateData)
+        .update({ apify_called: false, apify_finished: true })
+        .eq("id", itemId);
+    }
+
+    // ============ STEP 2: Apollo (direct, no Apify URL available) ============
+    // Only reaches here if Apify was skipped or failed to start
+    console.log("Step 2: Going directly to Apollo (no Apify URL or Apify start failed)");
+
+    const hasStrongIdentifiers = !!(resolvedFirst && resolvedLast && (resolvedCompany || domain));
+
+    if (!hasStrongIdentifiers) {
+      console.warn("Apollo skipped: no strong identifiers (name+org/domain required)");
+      await supabase
+        .from("prospect_list_items")
+        .update({
+          enrichment_status: "done",
+          apollo_called: false,
+          apollo_reason: "no_strong_identifiers",
+        })
         .eq("id", itemId);
 
-      if (updateError) {
-        console.error("DB update error:", updateError);
-      }
+      return new Response(
+        JSON.stringify({ found: false, status: "done" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    const found =
-      (searchType === "email" && !!email) || (searchType === "phone" && !!phone);
+    // Call Apollo synchronously since there's no Apify to wait for
+    try {
+      const apolloResult = await enrichWithApollo(
+        { firstName: resolvedFirst, lastName: resolvedLast, company: resolvedCompany, domain, email: item.email },
+        APOLLO_API_KEY,
+        searchType
+      );
 
-    // Differentiate: found=true, error (enrichment failure), or genuinely not found
-    return new Response(
-      JSON.stringify({
-        email,
-        phone,
-        source,
-        found,
-        enrichmentError: !found ? enrichmentError : null,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+      const email = searchType === "email" ? (apolloResult?.email || null) : null;
+      const phone = searchType === "phone" ? (apolloResult?.phone || null) : null;
+      const found = !!(email || phone);
+
+      const updateData: Record<string, unknown> = {
+        enrichment_status: "done",
+        apollo_called: true,
+        apollo_reason: "apify_skipped_no_public_url",
+      };
+      if (email) { updateData.email = email; updateData.enrichment_source = "apollo"; }
+      if (phone) { updateData.phone = phone; updateData.enrichment_source = "apollo"; }
+
+      await supabase.from("prospect_list_items").update(updateData).eq("id", itemId);
+
+      console.log("Apollo direct result:", { email, phone, found });
+
+      return new Response(
+        JSON.stringify({ email, phone, found, source: found ? "apollo" : null, status: "done" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    } catch (err) {
+      console.error("Apollo error:", err);
+      await supabase
+        .from("prospect_list_items")
+        .update({
+          enrichment_status: "error",
+          apollo_called: true,
+          apollo_reason: `error: ${err instanceof Error ? err.message : "unknown"}`,
+        })
+        .eq("id", itemId);
+
+      return new Response(
+        JSON.stringify({ found: false, enrichmentError: "Falha no enrichment", status: "error" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
   } catch (error) {
     console.error("enrich-lead error:", error);
     return new Response(
@@ -230,6 +244,7 @@ serve(async (req) => {
         error: error instanceof Error ? error.message : "Unknown error",
         enrichmentError: "Falha no enrichment",
         found: false,
+        status: "error",
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
@@ -238,28 +253,24 @@ serve(async (req) => {
 
 // =============================================
 // Convert any LinkedIn URL to public /in/ format
-// Sales Navigator URLs cannot be used by Apify
 // =============================================
 function toPublicLinkedInUrl(url: string | null | undefined): string | null {
   if (!url || typeof url !== "string") return null;
   const cleaned = url.trim();
   if (!cleaned) return null;
 
-  // Already a public profile URL — extract and normalize
   const publicMatch = cleaned.match(/linkedin\.com\/in\/([a-zA-Z0-9_-]+)/);
   if (publicMatch) {
     return `https://www.linkedin.com/in/${publicMatch[1]}`;
   }
 
-  // Sales Navigator URL — cannot reliably convert to public URL
   if (cleaned.includes("linkedin.com/sales/")) {
-    console.warn("Sales Navigator URL detected, cannot convert to public profile for Apify:", cleaned);
+    console.warn("Sales Navigator URL detected, cannot convert for Apify:", cleaned);
     return null;
   }
 
-  // Other unrecognized LinkedIn URL formats
   if (cleaned.includes("linkedin.com")) {
-    console.warn("Unrecognized LinkedIn URL format for Apify:", cleaned);
+    console.warn("Unrecognized LinkedIn URL format:", cleaned);
     return null;
   }
 
@@ -267,19 +278,28 @@ function toPublicLinkedInUrl(url: string | null | undefined): string | null {
 }
 
 // =============================================
-// Apify: Dedicated contact enrichment actor
-// Receives ONLY public LinkedIn URLs
+// Start Apify job ASYNC (do NOT wait for result)
+// Returns the run ID for tracking
 // =============================================
-async function enrichWithApify(
+async function startApifyJob(
   publicLinkedinUrl: string,
-  apiKey: string
-): Promise<{ email?: string; phone?: string } | null> {
+  apiKey: string,
+  webhookUrl: string,
+  itemId: string,
+  searchType: string,
+  firstName: string,
+  lastName: string,
+  company: string,
+  domain: string
+): Promise<string> {
   const actorId = "dev_fusion~linkedin-profile-scraper";
-  const runUrl = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${apiKey}`;
 
-  console.log("Apify request URL:", publicLinkedinUrl);
+  // Step 1: Start the run (async, do NOT use run-sync)
+  const runUrl = `https://api.apify.com/v2/acts/${actorId}/runs?token=${apiKey}`;
 
-  const response = await fetch(runUrl, {
+  console.log("Apify start payload:", { profileUrls: [publicLinkedinUrl] });
+
+  const runResponse = await fetch(runUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -287,52 +307,58 @@ async function enrichWithApify(
     }),
   });
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Apify error [${response.status}]: ${text}`);
+  if (!runResponse.ok) {
+    const text = await runResponse.text();
+    throw new Error(`Apify start error [${runResponse.status}]: ${text}`);
   }
 
-  const data = await response.json();
-  if (!Array.isArray(data) || data.length === 0) return null;
+  const runData = await runResponse.json();
+  const runId = runData.data?.id;
+  if (!runId) throw new Error("Apify did not return a run ID");
 
-  const profile = data[0];
+  console.log("Apify run started:", runId);
 
-  const email =
-    profile.email ||
-    profile.emailAddress ||
-    profile.emails?.[0] ||
-    profile.contact?.email ||
-    null;
+  // Step 2: Register webhook for this run
+  const webhookPayload = {
+    eventTypes: ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.ABORTED", "ACTOR.RUN.TIMED_OUT"],
+    requestUrl: webhookUrl,
+    payloadTemplate: JSON.stringify({
+      runId: "{{runId}}",
+      eventType: "{{eventType}}",
+      datasetId: "{{defaultDatasetId}}",
+      // Custom data passed through webhook
+      itemId,
+      searchType,
+      firstName,
+      lastName,
+      company,
+      domain,
+    }),
+    isAdHoc: true,
+    idempotencyKey: `enrich-${itemId}-${searchType}`,
+  };
 
-  const phone =
-    profile.mobileNumber ||
-    profile.mobile_number ||
-    profile.phone ||
-    profile.phoneNumber ||
-    profile.phones?.[0] ||
-    profile.contact?.phone ||
-    null;
+  console.log("Registering Apify webhook for run:", runId);
 
-  return { email, phone };
-}
+  const webhookResponse = await fetch(
+    `https://api.apify.com/v2/webhooks?token=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(webhookPayload),
+    }
+  );
 
-// =============================================
-// LinkedIn URL Normalization (for Apollo)
-// =============================================
-function normalizeLinkedInUrl(url: string | null | undefined): string | null {
-  if (!url || typeof url !== "string") return null;
-  let cleaned = url.trim();
-  if (!cleaned) return null;
-
-  cleaned = cleaned.replace(/\/+$/, "");
-
-  // Extract /in/username
-  const match = cleaned.match(/linkedin\.com\/in\/([a-zA-Z0-9_-]+)/);
-  if (match) {
-    return `https://www.linkedin.com/in/${match[1]}`;
+  if (!webhookResponse.ok) {
+    const text = await webhookResponse.text();
+    console.error("Webhook registration failed:", text);
+    // Don't throw — we can still poll as fallback, but log the error
+    console.warn("Webhook registration failed, run will still complete but webhook won't fire");
+  } else {
+    console.log("Apify webhook registered successfully");
   }
 
-  return null;
+  return runId;
 }
 
 // =============================================
@@ -345,7 +371,6 @@ async function enrichWithApollo(
     lastName?: string;
     company?: string;
     domain?: string;
-    linkedinUrl?: string | null;
     email?: string | null;
   },
   apiKey: string,
@@ -359,7 +384,6 @@ async function enrichWithApollo(
     body.reveal_phone_number = true;
   }
 
-  if (params.linkedinUrl) body.linkedin_url = params.linkedinUrl;
   if (params.firstName) body.first_name = params.firstName;
   if (params.lastName) body.last_name = params.lastName;
   if (params.company) body.organization_name = params.company;
@@ -388,7 +412,7 @@ async function enrichWithApollo(
   const data = JSON.parse(responseText);
   const person = data.person;
   if (!person) {
-    console.log("Apollo: person is null — no match found for given identifiers");
+    console.log("Apollo: person is null — no match found");
     return null;
   }
 
