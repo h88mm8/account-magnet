@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
-import { List, Trash2, Pencil, Search, ChevronRight, Building2, User, X, MapPin, Briefcase, Users, Factory, UserCircle } from "lucide-react";
+import { List, Trash2, Pencil, Search, ChevronRight, Building2, User, X, MapPin, Briefcase, Users, Factory, UserCircle, Mail, Phone, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LeadMiniCard } from "@/components/LeadMiniCard";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 const FALLBACK = "Não informado";
 import {
@@ -23,12 +25,79 @@ import { useProspectLists, type ProspectListItem } from "@/hooks/useProspectList
 
 export default function Lists() {
   const { lists, loading, deleteList, renameList, getListItems, removeItem } = useProspectLists();
+  const { toast } = useToast();
   const [selectedListId, setSelectedListId] = useState<string | null>(null);
   const [listItems, setListItems] = useState<ProspectListItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [enrichingEmail, setEnrichingEmail] = useState<Set<string>>(new Set());
+  const [enrichingPhone, setEnrichingPhone] = useState<Set<string>>(new Set());
+
+  const handleEnrich = async (item: ProspectListItem, searchType: "email" | "phone") => {
+    const setLoading = searchType === "email" ? setEnrichingEmail : setEnrichingPhone;
+    setLoading((prev) => new Set(prev).add(item.id));
+
+    try {
+      // Parse names from item.name
+      const nameParts = item.name.split(" ");
+      const firstName = nameParts[0] || "";
+      const lastName = nameParts.slice(1).join(" ") || "";
+
+      const { data, error } = await supabase.functions.invoke("enrich-lead", {
+        body: {
+          itemId: item.id,
+          searchType,
+          linkedinUrl: item.linkedin_url,
+          firstName,
+          lastName,
+          company: item.company,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data.alreadyExists) {
+        toast({
+          title: searchType === "email" ? "Email já encontrado" : "Telefone já encontrado",
+          description: searchType === "email" ? data.email : data.phone,
+        });
+      } else if (data.found) {
+        toast({
+          title: searchType === "email" ? "Email encontrado!" : "Telefone encontrado!",
+          description: `${searchType === "email" ? data.email : data.phone} (via ${data.source})`,
+        });
+        // Update local state
+        setListItems((prev) =>
+          prev.map((i) =>
+            i.id === item.id
+              ? { ...i, ...(data.email && { email: data.email }), ...(data.phone && { phone: data.phone }), enrichment_source: data.source }
+              : i
+          )
+        );
+      } else {
+        toast({
+          title: "Dado não encontrado",
+          description: `Não foi possível encontrar o ${searchType === "email" ? "email" : "telefone"} deste lead.`,
+          variant: "destructive",
+        });
+      }
+    } catch (err) {
+      console.error("Enrich error:", err);
+      toast({
+        title: "Erro no enriquecimento",
+        description: err instanceof Error ? err.message : "Erro desconhecido",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading((prev) => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
+    }
+  };
 
   useEffect(() => {
     if (selectedListId) {
@@ -123,7 +192,13 @@ export default function Lists() {
                       <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Empresa</TableHead>
                     </>
                   )}
-                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Localização</TableHead>
+                  {selectedList.list_type === "leads" && (
+                    <>
+                      <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email</TableHead>
+                      <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Telefone</TableHead>
+                      <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Ações</TableHead>
+                    </>
+                  )}
                   <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
@@ -208,6 +283,52 @@ export default function Lists() {
                           {item.location || FALLBACK}
                         </div>
                       </TableCell>
+                      {selectedList.list_type === "leads" && isLead && (
+                        <>
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">
+                              {item.email || "—"}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">
+                              {item.phone || "—"}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 gap-1 text-xs"
+                                disabled={!!item.email || enrichingEmail.has(item.id)}
+                                onClick={() => handleEnrich(item, "email")}
+                              >
+                                {enrichingEmail.has(item.id) ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Mail className="h-3 w-3" />
+                                )}
+                                {item.email ? "Encontrado" : "Buscar Email"}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 gap-1 text-xs"
+                                disabled={!!item.phone || enrichingPhone.has(item.id)}
+                                onClick={() => handleEnrich(item, "phone")}
+                              >
+                                {enrichingPhone.has(item.id) ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Phone className="h-3 w-3" />
+                                )}
+                                {item.phone ? "Encontrado" : "Buscar Celular"}
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </>
+                      )}
                       <TableCell>
                         <Button
                           variant="ghost"

@@ -26,6 +26,9 @@ export type ProspectListItem = {
   location: string | null;
   linkedin_url: string | null;
   headcount: string | null;
+  email: string | null;
+  phone: string | null;
+  enrichment_source: string | null;
   created_at: string;
 };
 
