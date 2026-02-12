@@ -45,6 +45,8 @@ export type Database = {
         Row: {
           company: string | null
           created_at: string
+          email: string | null
+          enrichment_source: string | null
           external_id: string | null
           headcount: string | null
           id: string
@@ -54,6 +56,7 @@ export type Database = {
           list_id: string
           location: string | null
           name: string
+          phone: string | null
           raw_data: Json | null
           title: string | null
           user_id: string
@@ -61,6 +64,8 @@ export type Database = {
         Insert: {
           company?: string | null
           created_at?: string
+          email?: string | null
+          enrichment_source?: string | null
           external_id?: string | null
           headcount?: string | null
           id?: string
@@ -70,6 +75,7 @@ export type Database = {
           list_id: string
           location?: string | null
           name: string
+          phone?: string | null
           raw_data?: Json | null
           title?: string | null
           user_id: string
@@ -77,6 +83,8 @@ export type Database = {
         Update: {
           company?: string | null
           created_at?: string
+          email?: string | null
+          enrichment_source?: string | null
           external_id?: string | null
           headcount?: string | null
           id?: string
@@ -86,6 +94,7 @@ export type Database = {
           list_id?: string
           location?: string | null
           name?: string
+          phone?: string | null
           raw_data?: Json | null
           title?: string | null
           user_id?: string
