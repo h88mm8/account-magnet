@@ -84,7 +84,6 @@ serve(async (req) => {
     }
 
     // ============ CONCURRENCY LOCK (optimistic) ============
-    // Set checked_at immediately to prevent concurrent duplicate calls
     const { error: lockError, data: lockData } = await supabase
       .from("prospect_list_items")
       .update({ [checkedAtField]: new Date().toISOString() })
@@ -94,7 +93,6 @@ serve(async (req) => {
       .single();
 
     if (lockError || !lockData) {
-      // Another request already locked this — return early
       return new Response(
         JSON.stringify({
           alreadyChecked: true,
@@ -108,27 +106,34 @@ serve(async (req) => {
     let email: string | null = null;
     let phone: string | null = null;
     let source: string | null = null;
+    let enrichmentError: string | null = null;
 
-    // ============ STEP 1: Apify (dedicated contact enrichment actor) ============
-    console.log("Step 1: Trying Apify contact enrichment...");
-    try {
-      const apifyResult = await enrichWithApify(linkedinUrl, APIFY_API_KEY);
-      if (apifyResult) {
-        if (searchType === "email" && apifyResult.email) {
-          email = apifyResult.email;
-          source = "apify";
+    // ============ STEP 1: Apify (LinkedIn public URL only) ============
+    const publicLinkedinUrl = toPublicLinkedInUrl(linkedinUrl || item.linkedin_url);
+
+    if (publicLinkedinUrl) {
+      console.log("Step 1: Trying Apify with public URL:", publicLinkedinUrl);
+      try {
+        const apifyResult = await enrichWithApify(publicLinkedinUrl, APIFY_API_KEY);
+        if (apifyResult) {
+          if (searchType === "email" && apifyResult.email) {
+            email = apifyResult.email;
+            source = "apify";
+          }
+          if (searchType === "phone" && apifyResult.phone) {
+            phone = apifyResult.phone;
+            source = "apify";
+          }
+          console.log("Apify result:", { email: apifyResult.email, phone: apifyResult.phone });
         }
-        if (searchType === "phone" && apifyResult.phone) {
-          phone = apifyResult.phone;
-          source = "apify";
-        }
-        console.log("Apify result:", { email: apifyResult.email, phone: apifyResult.phone });
+      } catch (err) {
+        console.error("Apify error:", err);
       }
-    } catch (err) {
-      console.error("Apify error:", err);
+    } else {
+      console.log("Step 1: Apify skipped — no valid public LinkedIn URL available");
     }
 
-    // ============ STEP 2: Apollo (fallback, scoped by searchType) ============
+    // ============ STEP 2: Apollo fallback (scoped by searchType) ============
     const needsFallback =
       (searchType === "email" && !email) || (searchType === "phone" && !phone);
 
@@ -142,7 +147,14 @@ serve(async (req) => {
       const hasLinkedin = !!normalizedLinkedin;
       const hasNameAndOrg = !!(resolvedFirst && resolvedLast && resolvedCompany);
 
-      console.log("Apollo identifiers:", { hasLinkedin, hasNameAndOrg, normalizedLinkedin, resolvedFirst, resolvedLast, resolvedCompany });
+      console.log("Apollo identifiers:", {
+        hasLinkedin,
+        hasNameAndOrg,
+        normalizedLinkedin,
+        resolvedFirst,
+        resolvedLast,
+        resolvedCompany,
+      });
 
       if (!hasLinkedin && !hasNameAndOrg) {
         console.warn("Apollo skipped: no strong identifier (linkedin_url or name+org)");
@@ -175,6 +187,7 @@ serve(async (req) => {
           }
         } catch (err) {
           console.error("Apollo matching error:", err);
+          enrichmentError = err instanceof Error ? err.message : "Apollo error";
         }
       }
     }
@@ -199,36 +212,78 @@ serve(async (req) => {
     const found =
       (searchType === "email" && !!email) || (searchType === "phone" && !!phone);
 
+    // Differentiate: found=true, error (enrichment failure), or genuinely not found
     return new Response(
-      JSON.stringify({ email, phone, source, found }),
+      JSON.stringify({
+        email,
+        phone,
+        source,
+        found,
+        enrichmentError: !found ? enrichmentError : null,
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
     console.error("enrich-lead error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({
+        error: error instanceof Error ? error.message : "Unknown error",
+        enrichmentError: "Falha no enrichment",
+        found: false,
+      }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
 
 // =============================================
+// Convert any LinkedIn URL to public /in/ format
+// Sales Navigator URLs cannot be used by Apify
+// =============================================
+function toPublicLinkedInUrl(url: string | null | undefined): string | null {
+  if (!url || typeof url !== "string") return null;
+  const cleaned = url.trim();
+  if (!cleaned) return null;
+
+  // Already a public profile URL — extract and normalize
+  const publicMatch = cleaned.match(/linkedin\.com\/in\/([a-zA-Z0-9_-]+)/);
+  if (publicMatch) {
+    return `https://www.linkedin.com/in/${publicMatch[1]}`;
+  }
+
+  // Sales Navigator URL — cannot reliably convert to public URL
+  if (cleaned.includes("linkedin.com/sales/")) {
+    console.warn("Sales Navigator URL detected, cannot convert to public profile for Apify:", cleaned);
+    return null;
+  }
+
+  // Other unrecognized LinkedIn URL formats
+  if (cleaned.includes("linkedin.com")) {
+    console.warn("Unrecognized LinkedIn URL format for Apify:", cleaned);
+    return null;
+  }
+
+  return null;
+}
+
+// =============================================
 // Apify: Dedicated contact enrichment actor
+// Receives ONLY public LinkedIn URLs
 // =============================================
 async function enrichWithApify(
-  linkedinUrl: string | null,
+  publicLinkedinUrl: string,
   apiKey: string
 ): Promise<{ email?: string; phone?: string } | null> {
-  if (!linkedinUrl) return null;
-
   const actorId = "dev_fusion~linkedin-profile-scraper";
   const runUrl = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${apiKey}`;
+
+  console.log("Apify request URL:", publicLinkedinUrl);
 
   const response = await fetch(runUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      profileUrls: [linkedinUrl],
+      profileUrls: [publicLinkedinUrl],
     }),
   });
 
@@ -249,7 +304,6 @@ async function enrichWithApify(
     profile.contact?.email ||
     null;
 
-  // Prioritize mobile number
   const phone =
     profile.mobileNumber ||
     profile.mobile_number ||
@@ -263,25 +317,27 @@ async function enrichWithApify(
 }
 
 // =============================================
-// LinkedIn URL Normalization
+// LinkedIn URL Normalization (for Apollo)
 // =============================================
 function normalizeLinkedInUrl(url: string | null | undefined): string | null {
   if (!url || typeof url !== "string") return null;
   let cleaned = url.trim();
   if (!cleaned) return null;
 
-  // Remove trailing slashes
   cleaned = cleaned.replace(/\/+$/, "");
 
-  // Extract the /in/username part
-  const match = cleaned.match(/(?:linkedin\.com)?\/?in\/([a-zA-Z0-9_-]+)/);
-  if (!match) return null;
+  // Extract /in/username
+  const match = cleaned.match(/linkedin\.com\/in\/([a-zA-Z0-9_-]+)/);
+  if (match) {
+    return `https://www.linkedin.com/in/${match[1]}`;
+  }
 
-  return `https://www.linkedin.com/in/${match[1]}`;
+  return null;
 }
 
 // =============================================
 // Apollo: People Match (scoped by searchType)
+// Auth: X-Api-Key header (official)
 // =============================================
 async function enrichWithApollo(
   params: {
@@ -297,14 +353,12 @@ async function enrichWithApollo(
 ): Promise<{ email?: string; phone?: string } | null> {
   const body: Record<string, unknown> = {};
 
-  // Only request what we need based on searchType
   if (searchType === "email") {
     body.reveal_personal_emails = true;
   } else {
     body.reveal_phone_number = true;
   }
 
-  // Add identifiers — linkedin_url is the strongest
   if (params.linkedinUrl) body.linkedin_url = params.linkedinUrl;
   if (params.firstName) body.first_name = params.firstName;
   if (params.lastName) body.last_name = params.lastName;
@@ -318,17 +372,20 @@ async function enrichWithApollo(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      "x-api-key": apiKey,
     },
     body: JSON.stringify(body),
   });
 
+  const responseText = await response.text();
+  console.log("Apollo response status:", response.status);
+  console.log("Apollo raw response:", responseText);
+
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Apollo match error [${response.status}]: ${text}`);
+    throw new Error(`Apollo match error [${response.status}]: ${responseText}`);
   }
 
-  const data = await response.json();
+  const data = JSON.parse(responseText);
   const person = data.person;
   if (!person) {
     console.log("Apollo: person is null — no match found for given identifiers");
@@ -342,7 +399,6 @@ async function enrichWithApollo(
   if (searchType === "email") {
     result.email = person.email || person.personal_emails?.[0] || null;
   } else {
-    // Prioritize mobile/cell phone
     const mobile = person.phone_numbers?.find(
       (p: { type?: string; sanitized_number?: string }) =>
         p.type === "mobile" && p.sanitized_number
