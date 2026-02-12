@@ -229,7 +229,17 @@ async function tryApolloFallback(
     if (searchType === "email") {
       body.reveal_personal_emails = true;
     } else {
-      body.reveal_phone_number = true;
+      // Apollo requires webhook_url for reveal_phone_number — skip gracefully
+      console.log("Apollo: phone enrichment skipped (requires webhook_url)");
+      await supabase
+        .from("prospect_list_items")
+        .update({
+          enrichment_status: "done",
+          apollo_called: false,
+          apollo_reason: "phone_requires_webhook_url",
+        })
+        .eq("id", item.id as string);
+      return;
     }
 
     body.first_name = resolvedFirst;
