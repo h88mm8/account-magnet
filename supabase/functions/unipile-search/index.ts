@@ -498,11 +498,13 @@ Deno.serve(async (req) => {
       console.error("Unipile API error:", JSON.stringify(data));
       return new Response(
         JSON.stringify({
-          error: data.message || `Unipile request failed with status ${response.status}`,
-          details: data,
+          items: [],
+          cursor: null,
+          paging: { start: 0, count: 0, total: null },
+          error: data.detail || data.message || `Unipile request failed with status ${response.status}`,
         }),
         {
-          status: response.status,
+          status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
@@ -578,10 +580,13 @@ Deno.serve(async (req) => {
     console.error("Edge function error:", error);
     return new Response(
       JSON.stringify({
+        items: [],
+        cursor: null,
+        paging: { start: 0, count: 0, total: null },
         error: error instanceof Error ? error.message : "Unknown error",
       }),
       {
-        status: 500,
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );

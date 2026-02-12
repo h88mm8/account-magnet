@@ -132,6 +132,10 @@ export async function searchAccounts(
     throw new Error(error.message || "Erro ao buscar empresas");
   }
 
+  if (data?.error) {
+    console.warn("Search returned error:", data.error);
+  }
+
   const locationFallback = buildLocationFallback(filters.location);
 
   return {
@@ -181,6 +185,10 @@ export async function searchLeads(
 
   if (error) {
     throw new Error(error.message || "Erro ao buscar leads");
+  }
+
+  if (data?.error) {
+    console.warn("Search returned error:", data.error);
   }
 
   const locationFallback = buildLocationFallback(filters.location);
