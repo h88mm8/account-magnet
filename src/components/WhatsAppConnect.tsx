@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MessageCircle, Loader2, CheckCircle2, X, ExternalLink } from "lucide-react";
+import { MessageCircle, Loader2, CheckCircle2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { useWhatsAppConnection } from "@/hooks/useWhatsAppConnection";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
 
 export function WhatsAppConnectModal({
   open,
@@ -114,34 +115,35 @@ export function WhatsAppConnectModal({
 
 export function WhatsAppButton({ phone }: { phone: string | null }) {
   const { status } = useWhatsAppConnection();
-  const [showModal, setShowModal] = useState(false);
+  const navigate = useNavigate();
+  const { toast } = useToast();
 
   if (!phone) return null;
 
   const handleClick = () => {
     if (status !== "connected") {
-      setShowModal(true);
+      toast({
+        title: "WhatsApp não conectado",
+        description: "Conecte seu WhatsApp nas Configurações para iniciar conversas.",
+      });
+      navigate("/settings?tab=integrations");
       return;
     }
 
-    // Format phone number (remove non-digits, ensure country code)
     const cleanPhone = phone.replace(/\D/g, "");
     const whatsappUrl = `https://wa.me/${cleanPhone}`;
     window.open(whatsappUrl, "_blank");
   };
 
   return (
-    <>
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-7 gap-1 text-xs border-green-200 text-green-700 hover:bg-green-50 hover:text-green-800"
-        onClick={handleClick}
-      >
-        <MessageCircle className="h-3 w-3" />
-        WhatsApp
-      </Button>
-      <WhatsAppConnectModal open={showModal} onOpenChange={setShowModal} />
-    </>
+    <Button
+      variant="outline"
+      size="sm"
+      className="h-7 gap-1 text-xs border-green-200 text-green-700 hover:bg-green-50 hover:text-green-800"
+      onClick={handleClick}
+    >
+      <MessageCircle className="h-3 w-3" />
+      WhatsApp
+    </Button>
   );
 }
