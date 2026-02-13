@@ -11,3 +11,9 @@ verify_jwt = false
 
 [functions.webhooks-apollo]
 verify_jwt = false
+
+[functions.whatsapp-connect]
+verify_jwt = false
+
+[functions.webhooks-whatsapp]
+verify_jwt = false
