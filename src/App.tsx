@@ -14,6 +14,7 @@ import Analytics from "./pages/Analytics";
 import Settings from "./pages/Settings";
 import Help from "./pages/Help";
 import Lists from "./pages/Lists";
+import Campaigns from "./pages/Campaigns";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -44,6 +45,7 @@ function ProtectedLayout() {
               <Route path="/companies" element={<Companies />} />
               <Route path="/contacts" element={<Contacts />} />
               <Route path="/lists" element={<Lists />} />
+              <Route path="/campaigns" element={<Campaigns />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/help" element={<Help />} />
