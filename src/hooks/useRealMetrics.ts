@@ -6,6 +6,10 @@ export type RealMetrics = {
   contactsSaved: number;
   activeLists: number;
   conversionRate: number;
+  totalCampaigns: number;
+  activeCampaigns: number;
+  totalSent: number;
+  totalReplied: number;
 };
 
 export type MonthlyData = {
@@ -21,9 +25,9 @@ export type IndustryData = {
 
 async function fetchMetrics(): Promise<RealMetrics> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { companiesSaved: 0, contactsSaved: 0, activeLists: 0, conversionRate: 0 };
+  if (!user) return { companiesSaved: 0, contactsSaved: 0, activeLists: 0, conversionRate: 0, totalCampaigns: 0, activeCampaigns: 0, totalSent: 0, totalReplied: 0 };
 
-  const [accountItems, leadItems, lists] = await Promise.all([
+  const [accountItems, leadItems, lists, campaigns] = await Promise.all([
     supabase
       .from("prospect_list_items")
       .select("id", { count: "exact", head: true })
@@ -38,6 +42,10 @@ async function fetchMetrics(): Promise<RealMetrics> {
       .from("prospect_lists")
       .select("id", { count: "exact", head: true })
       .eq("user_id", user.id),
+    supabase
+      .from("campaigns")
+      .select("status, total_sent, total_replied")
+      .eq("user_id", user.id),
   ]);
 
   const companies = accountItems.count ?? 0;
@@ -45,11 +53,17 @@ async function fetchMetrics(): Promise<RealMetrics> {
   const totalItems = companies + contacts;
   const conversionRate = totalItems > 0 ? (contacts / totalItems) * 100 : 0;
 
+  const campaignList = campaigns.data || [];
+
   return {
     companiesSaved: companies,
     contactsSaved: contacts,
     activeLists: lists.count ?? 0,
     conversionRate: Math.round(conversionRate * 10) / 10,
+    totalCampaigns: campaignList.length,
+    activeCampaigns: campaignList.filter((c) => c.status === "active").length,
+    totalSent: campaignList.reduce((s, c) => s + (c.total_sent || 0), 0),
+    totalReplied: campaignList.reduce((s, c) => s + (c.total_replied || 0), 0),
   };
 }
 

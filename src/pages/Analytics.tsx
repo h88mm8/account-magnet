@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Building2, Users, TrendingUp, Target, Download } from "lucide-react";
+import { Building2, Users, TrendingUp, Target, Download, Send, Reply, Mail } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,6 +34,9 @@ const Analytics = () => {
     { label: "Contatos salvos", value: metrics?.contactsSaved ?? 0, icon: Users },
     { label: "Taxa de conversão", value: `${metrics?.conversionRate ?? 0}%`, icon: TrendingUp },
     { label: "Listas ativas", value: metrics?.activeLists ?? 0, icon: Target },
+    { label: "Campanhas ativas", value: metrics?.activeCampaigns ?? 0, icon: Mail },
+    { label: "Total enviados", value: metrics?.totalSent ?? 0, icon: Send },
+    { label: "Total respondidos", value: metrics?.totalReplied ?? 0, icon: Reply },
   ];
 
   return (
@@ -65,7 +68,7 @@ const Analytics = () => {
       </div>
 
       {/* KPIs */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         {kpis.map((kpi) => (
           <Card key={kpi.label} className="border border-border shadow-none">
             <CardContent className="p-5">

@@ -1,4 +1,4 @@
-import { Building2, Users, TrendingUp, Target } from "lucide-react";
+import { Building2, Users, TrendingUp, Target, Send } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useRealMetrics } from "@/hooks/useRealMetrics";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,10 +27,15 @@ export function StatsCards() {
       value: metrics?.activeLists ?? 0,
       icon: Target,
     },
+    {
+      label: "Campanhas ativas",
+      value: metrics?.activeCampaigns ?? 0,
+      icon: Send,
+    },
   ];
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
       {stats.map((stat) => (
         <Card key={stat.label} className="border border-border shadow-none">
           <CardContent className="p-5">

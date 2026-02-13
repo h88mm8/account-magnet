@@ -14,6 +14,146 @@ export type Database = {
   }
   public: {
     Tables: {
+      campaign_leads: {
+        Row: {
+          accepted_at: string | null
+          campaign_id: string
+          created_at: string
+          delivered_at: string | null
+          error_message: string | null
+          failed_at: string | null
+          id: string
+          lead_id: string
+          opened_at: string | null
+          replied_at: string | null
+          sent_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+          webhook_data: Json | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          campaign_id: string
+          created_at?: string
+          delivered_at?: string | null
+          error_message?: string | null
+          failed_at?: string | null
+          id?: string
+          lead_id: string
+          opened_at?: string | null
+          replied_at?: string | null
+          sent_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+          webhook_data?: Json | null
+        }
+        Update: {
+          accepted_at?: string | null
+          campaign_id?: string
+          created_at?: string
+          delivered_at?: string | null
+          error_message?: string | null
+          failed_at?: string | null
+          id?: string
+          lead_id?: string
+          opened_at?: string | null
+          replied_at?: string | null
+          sent_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+          webhook_data?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_leads_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "prospect_list_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      campaigns: {
+        Row: {
+          channel: string
+          created_at: string
+          daily_limit: number
+          id: string
+          linkedin_type: string | null
+          list_id: string | null
+          message_template: string | null
+          name: string
+          status: string
+          subject: string | null
+          total_accepted: number
+          total_delivered: number
+          total_failed: number
+          total_opened: number
+          total_replied: number
+          total_sent: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          daily_limit?: number
+          id?: string
+          linkedin_type?: string | null
+          list_id?: string | null
+          message_template?: string | null
+          name: string
+          status?: string
+          subject?: string | null
+          total_accepted?: number
+          total_delivered?: number
+          total_failed?: number
+          total_opened?: number
+          total_replied?: number
+          total_sent?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          daily_limit?: number
+          id?: string
+          linkedin_type?: string | null
+          list_id?: string | null
+          message_template?: string | null
+          name?: string
+          status?: string
+          subject?: string | null
+          total_accepted?: number
+          total_delivered?: number
+          total_failed?: number
+          total_opened?: number
+          total_replied?: number
+          total_sent?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaigns_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "prospect_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
