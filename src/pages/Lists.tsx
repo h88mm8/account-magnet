@@ -35,64 +35,7 @@ export default function Lists() {
   const [enrichingEmail, setEnrichingEmail] = useState<Set<string>>(new Set());
   const [enrichingPhone, setEnrichingPhone] = useState<Set<string>>(new Set());
 
-  // Subscribe to realtime updates for enrichment results
-  useEffect(() => {
-    const channel = supabase
-      .channel('enrichment-updates')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'prospect_list_items',
-        },
-        (payload) => {
-          const updated = payload.new as ProspectListItem & {
-            enrichment_status?: string;
-          };
-          if (updated.enrichment_status === "done" || updated.enrichment_status === "error") {
-            // Update local state with the enrichment result
-            setListItems((prev) =>
-              prev.map((i) =>
-                i.id === updated.id ? { ...i, ...updated } : i
-              )
-            );
-
-            // Remove from loading sets
-            setEnrichingEmail((prev) => {
-              const next = new Set(prev);
-              next.delete(updated.id);
-              return next;
-            });
-            setEnrichingPhone((prev) => {
-              const next = new Set(prev);
-              next.delete(updated.id);
-              return next;
-            });
-
-            // Show toast based on result
-            if (updated.email && !item_had_email.current.has(updated.id)) {
-              toast({ title: "Email encontrado!", description: `${updated.email} (via ${updated.enrichment_source})` });
-            } else if (updated.phone && !item_had_phone.current.has(updated.id)) {
-              toast({ title: "Telefone encontrado!", description: `${updated.phone} (via ${updated.enrichment_source})` });
-            } else if (updated.enrichment_status === "error") {
-              toast({ title: "Falha no enrichment", description: "Erro ao buscar dados do lead.", variant: "destructive" });
-            } else if (updated.enrichment_status === "done") {
-              // Check if this was a processing item that finished without finding data
-              if (enrichingEmail.has(updated.id) || enrichingPhone.has(updated.id)) {
-                toast({ title: "Dado não encontrado", description: "Busca concluída sem resultado.", variant: "destructive" });
-              }
-            }
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedListId]);
+  // Realtime removed — enrichment is now fully synchronous
 
   // Track which items already had email/phone to avoid duplicate toasts
   const item_had_email = useRef<Set<string>>(new Set());
@@ -141,9 +84,6 @@ export default function Lists() {
             ? (searchType === "email" ? data.email : data.phone)
             : `${searchType === "email" ? "Email" : "Telefone"} já foi buscado anteriormente sem resultado.`,
         });
-      } else if (data.status === "processing") {
-        // Async flow — keep spinner, realtime will update
-        toast({ title: "Buscando...", description: "O enriquecimento está em andamento. Aguarde." });
       } else if (data.status === "done") {
         // Synchronous result (Apollo direct, no Apify)
         setLoading((prev) => { const next = new Set(prev); next.delete(item.id); return next; });
