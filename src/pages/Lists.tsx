@@ -1,13 +1,15 @@
-import { useState, useEffect, useRef } from "react";
-import { List, Trash2, Pencil, Search, ChevronRight, Building2, User, X, MapPin, Briefcase, Users, Factory, UserCircle, Mail, Phone, Loader2 } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { List, Trash2, Pencil, Search, ChevronRight, Building2, User, X, MapPin, Briefcase, Users, Factory, UserCircle, Mail, Phone, Loader2, CheckSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LeadMiniCard } from "@/components/LeadMiniCard";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { Progress } from "@/components/ui/progress";
 
 const FALLBACK = "Não informado";
 import {
@@ -34,6 +36,76 @@ export default function Lists() {
   const [editName, setEditName] = useState("");
   const [enrichingEmail, setEnrichingEmail] = useState<Set<string>>(new Set());
   const [enrichingPhone, setEnrichingPhone] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
+  const bulkAbortRef = useRef(false);
+
+  // Reset selection when switching lists
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setBulkRunning(false);
+    bulkAbortRef.current = false;
+  }, [selectedListId]);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    const leadItems = filteredItems.filter((i) => i.item_type === "lead");
+    if (selectedIds.size === leadItems.length && leadItems.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(leadItems.map((i) => i.id)));
+    }
+  };
+
+  const handleBulkEnrich = useCallback(async (searchType: "email" | "phone") => {
+    const checkedField = searchType === "email" ? "email_checked_at" : "phone_checked_at";
+    const dataField = searchType === "email" ? "email" : "phone";
+
+    // Filter eligible items: selected, lead type, not already checked/has data
+    const eligible = listItems.filter(
+      (i) => selectedIds.has(i.id) && i.item_type === "lead" && !i[checkedField] && !i[dataField]
+    );
+
+    if (eligible.length === 0) {
+      toast({ title: "Nenhum contato elegível", description: "Todos os selecionados já foram verificados ou já possuem o dado." });
+      return;
+    }
+
+    setBulkRunning(true);
+    bulkAbortRef.current = false;
+    setBulkProgress({ done: 0, total: eligible.length });
+
+    const BATCH_SIZE = 3;
+    const DELAY_MS = 1000;
+
+    for (let i = 0; i < eligible.length; i += BATCH_SIZE) {
+      if (bulkAbortRef.current) break;
+
+      const batch = eligible.slice(i, i + BATCH_SIZE);
+      await Promise.all(batch.map((item) => handleEnrich(item, searchType)));
+      setBulkProgress({ done: Math.min(i + BATCH_SIZE, eligible.length), total: eligible.length });
+
+      // Rate limit delay between batches
+      if (i + BATCH_SIZE < eligible.length && !bulkAbortRef.current) {
+        await new Promise((r) => setTimeout(r, DELAY_MS));
+      }
+    }
+
+    setBulkRunning(false);
+    if (!bulkAbortRef.current) {
+      toast({ title: "Busca em massa concluída!", description: `${eligible.length} contato(s) processado(s).` });
+    }
+    setSelectedIds(new Set());
+  }, [listItems, selectedIds, toast]);
 
   // Realtime subscription for async phone enrichment (Apollo webhook)
   useEffect(() => {
@@ -236,6 +308,64 @@ export default function Lists() {
           />
         </div>
 
+        {/* Bulk action bar */}
+        {selectedList.list_type === "leads" && selectedIds.size > 0 && (
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+            <span className="text-sm font-medium text-foreground">
+              {selectedIds.size} selecionado(s)
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5 text-xs"
+              disabled={bulkRunning}
+              onClick={() => handleBulkEnrich("email")}
+            >
+              <Mail className="h-3.5 w-3.5" />
+              Buscar Email ({selectedIds.size})
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5 text-xs"
+              disabled={bulkRunning}
+              onClick={() => handleBulkEnrich("phone")}
+            >
+              <Phone className="h-3.5 w-3.5" />
+              Buscar Celular ({selectedIds.size})
+            </Button>
+            {bulkRunning && (
+              <Button
+                size="sm"
+                variant="destructive"
+                className="h-8 text-xs"
+                onClick={() => { bulkAbortRef.current = true; }}
+              >
+                Cancelar
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 text-xs"
+              onClick={() => setSelectedIds(new Set())}
+            >
+              Limpar seleção
+            </Button>
+          </div>
+        )}
+
+        {/* Bulk progress */}
+        {bulkRunning && bulkProgress.total > 0 && (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>Processando... {bulkProgress.done}/{bulkProgress.total}</span>
+              <span>{Math.round((bulkProgress.done / bulkProgress.total) * 100)}%</span>
+            </div>
+            <Progress value={(bulkProgress.done / bulkProgress.total) * 100} className="h-2" />
+          </div>
+        )}
+
         {itemsLoading ? (
           <Card className="flex items-center justify-center p-16">
             <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-muted border-t-primary" />
@@ -250,6 +380,15 @@ export default function Lists() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {selectedList.list_type === "leads" && (
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={filteredItems.filter((i) => i.item_type === "lead").length > 0 && selectedIds.size === filteredItems.filter((i) => i.item_type === "lead").length}
+                        onCheckedChange={toggleSelectAll}
+                        aria-label="Selecionar todos"
+                      />
+                    </TableHead>
+                  )}
                   <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tipo</TableHead>
                   <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Nome</TableHead>
                   {selectedList.list_type === "leads" ? (
@@ -283,6 +422,17 @@ export default function Lists() {
                   const isLead = item.item_type === "lead";
                   return (
                     <TableRow key={item.id} className="group">
+                      {selectedList.list_type === "leads" && (
+                        <TableCell>
+                          {isLead ? (
+                            <Checkbox
+                              checked={selectedIds.has(item.id)}
+                              onCheckedChange={() => toggleSelect(item.id)}
+                              aria-label={`Selecionar ${item.name}`}
+                            />
+                          ) : <span />}
+                        </TableCell>
+                      )}
                       <TableCell>
                         {isLead ? (
                           <Badge variant="secondary" className="gap-1 text-xs"><User className="h-3 w-3" />Lead</Badge>
