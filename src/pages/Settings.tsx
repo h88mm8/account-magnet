@@ -15,6 +15,9 @@ const Settings = () => {
   const { status: waStatus, disconnect: waDisconnect } = useWhatsAppConnection();
   const [showWaModal, setShowWaModal] = useState(false);
 
+  const searchParams = new URLSearchParams(window.location.search);
+  const defaultTab = searchParams.get("tab") || "profile";
+
   return (
     <div className="space-y-6 p-6 lg:p-8">
       <div>
@@ -24,7 +27,7 @@ const Settings = () => {
         </p>
       </div>
 
-      <Tabs defaultValue="profile" className="space-y-6">
+      <Tabs defaultValue={defaultTab} className="space-y-6">
         <TabsList>
           <TabsTrigger value="profile" className="gap-2">
             <User className="h-4 w-4" />
