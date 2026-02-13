@@ -35,18 +35,20 @@ serve(async (req) => {
     }
 
     // Extract phone from Apollo webhook payload
-    // Apollo sends the person object directly in the webhook
-    const person = payload?.person || payload;
+    // Apollo bulk enrichment sends { people: [{ phone_numbers: [...] }] }
+    // Single enrichment may send { person: { phone_numbers: [...] } }
+    const person = payload?.people?.[0] || payload?.person || payload;
     let phone: string | null = null;
 
     if (person) {
-      const mobile = person.phone_numbers?.find(
-        (p: { type?: string; sanitized_number?: string }) =>
-          p.type === "mobile" && p.sanitized_number
+      const phoneNumbers = person.phone_numbers || [];
+      const mobile = phoneNumbers.find(
+        (p: { type_cd?: string; type?: string; sanitized_number?: string }) =>
+          (p.type_cd === "mobile" || p.type === "mobile") && p.sanitized_number
       );
       phone =
         mobile?.sanitized_number ||
-        person.phone_numbers?.find(
+        phoneNumbers.find(
           (p: { sanitized_number?: string }) => p.sanitized_number
         )?.sanitized_number ||
         person.mobile_phone ||
