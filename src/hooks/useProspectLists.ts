@@ -29,6 +29,7 @@ export type ProspectListItem = {
   email: string | null;
   phone: string | null;
   enrichment_source: string | null;
+  enrichment_status: string | null;
   email_checked_at: string | null;
   phone_checked_at: string | null;
   created_at: string;
