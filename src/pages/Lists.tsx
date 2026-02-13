@@ -185,22 +185,23 @@ export default function Lists() {
       }
       if (data.alreadyChecked) {
         setLoading((prev) => { const next = new Set(prev); next.delete(item.id); return next; });
-        toast({
-          title: "Já verificado",
-          description: data.found
-            ? (searchType === "email" ? data.email : data.phone)
-            : `${searchType === "email" ? "Email" : "Telefone"} já foi buscado anteriormente sem resultado.`,
-        });
+        if (data.found) {
+          toast({
+            title: searchType === "email" ? "Email encontrado!" : "Telefone encontrado!",
+            description: searchType === "email" ? data.email : data.phone,
+          });
+        }
+        // If not found and already checked, do nothing (button already shows retry state)
       } else if (data.status === "processing") {
         // Async phone enrichment — keep loading, Realtime will update
-        toast({ title: "Buscando telefone...", description: "Aguardando resultado do Apollo. Você será notificado." });
+        toast({ title: "Buscando telefone...", description: "Aguarde, estamos localizando o número." });
       } else if (data.status === "done") {
         // Synchronous result (email)
         setLoading((prev) => { const next = new Set(prev); next.delete(item.id); return next; });
         if (data.found) {
           toast({
             title: searchType === "email" ? "Email encontrado!" : "Telefone encontrado!",
-            description: `${searchType === "email" ? data.email : data.phone} (via ${data.source})`,
+            description: searchType === "email" ? data.email : data.phone,
           });
           setListItems((prev) =>
             prev.map((i) =>
@@ -230,18 +231,26 @@ export default function Lists() {
                 : i
             )
           );
-          toast({ title: "Dado não encontrado", description: "Busca concluída sem resultado.", variant: "destructive" });
+          toast({
+            title: searchType === "email"
+              ? "Não foi possível encontrar o email deste contato."
+              : "Não foi possível encontrar o telefone deste contato.",
+          });
         }
       } else if (data.status === "error") {
         setLoading((prev) => { const next = new Set(prev); next.delete(item.id); return next; });
-        toast({ title: "Falha no enrichment", description: data.enrichmentError || "Erro desconhecido", variant: "destructive" });
+        toast({
+          title: searchType === "email"
+            ? "Não foi possível encontrar o email deste contato."
+            : "Não foi possível encontrar o telefone deste contato.",
+        });
       }
     } catch (err) {
       console.error("Enrich error:", err);
       setLoading((prev) => { const next = new Set(prev); next.delete(item.id); return next; });
       toast({
-        title: "Erro no enriquecimento",
-        description: err instanceof Error ? err.message : "Erro desconhecido",
+        title: "Erro na busca",
+        description: "Tente novamente em alguns instantes.",
         variant: "destructive",
       });
     }
@@ -527,7 +536,7 @@ export default function Lists() {
                                 variant="outline"
                                 size="sm"
                                 className="h-7 gap-1 text-xs"
-                                disabled={!!item.email_checked_at || enrichingEmail.has(item.id)}
+                                disabled={enrichingEmail.has(item.id)}
                                 onClick={() => handleEnrich(item, "email")}
                               >
                                 {enrichingEmail.has(item.id) ? (
@@ -535,13 +544,13 @@ export default function Lists() {
                                 ) : (
                                   <Mail className="h-3 w-3" />
                                 )}
-                                {item.email ? "Encontrado" : item.email_checked_at ? "Não encontrado" : "Buscar Email"}
+                                {item.email ? "Email encontrado" : item.email_checked_at ? "Tentar novamente" : "Buscar Email"}
                               </Button>
                               <Button
                                 variant="outline"
                                 size="sm"
                                 className="h-7 gap-1 text-xs"
-                                disabled={!!item.phone_checked_at || enrichingPhone.has(item.id)}
+                                disabled={enrichingPhone.has(item.id)}
                                 onClick={() => handleEnrich(item, "phone")}
                               >
                                 {enrichingPhone.has(item.id) ? (
@@ -549,7 +558,7 @@ export default function Lists() {
                                 ) : (
                                   <Phone className="h-3 w-3" />
                                 )}
-                                {item.phone ? "Encontrado" : item.phone_checked_at ? "Não encontrado" : "Buscar Celular"}
+                                {item.phone ? "Telefone encontrado" : item.phone_checked_at ? "Tentar novamente" : "Buscar Celular"}
                               </Button>
                             </div>
                           </TableCell>
