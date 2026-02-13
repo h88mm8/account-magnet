@@ -13,9 +13,6 @@ serve(async (req) => {
   }
 
   try {
-    const APIFY_API_KEY = Deno.env.get("APIFY_API_KEY");
-    if (!APIFY_API_KEY) throw new Error("APIFY_API_KEY is not configured");
-
     const APOLLO_API_KEY = Deno.env.get("APOLLO_API_KEY");
     if (!APOLLO_API_KEY) throw new Error("APOLLO_API_KEY is not configured");
 
@@ -83,15 +80,7 @@ serve(async (req) => {
       );
     }
 
-    // Check if already processing
-    if (item.enrichment_status === "processing") {
-      return new Response(
-        JSON.stringify({ status: "processing", message: "Enrichment already in progress" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // ============ CONCURRENCY LOCK (optimistic) ============
+    // ============ CONCURRENCY LOCK ============
     const { error: lockError, data: lockData } = await supabase
       .from("prospect_list_items")
       .update({
@@ -114,74 +103,10 @@ serve(async (req) => {
       );
     }
 
-// ============ RESOLVE IDENTIFIERS ============
-    const UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY") || "";
-    const UNIPILE_BASE_URL = Deno.env.get("UNIPILE_BASE_URL") || "";
-    const UNIPILE_ACCOUNT_ID = Deno.env.get("UNIPILE_ACCOUNT_ID") || "";
-
-    const publicLinkedinUrl = await resolvePublicLinkedInUrl(
-      linkedinUrl || item.linkedin_url,
-      UNIPILE_API_KEY,
-      UNIPILE_BASE_URL,
-      UNIPILE_ACCOUNT_ID
-    );
+    // ============ RESOLVE IDENTIFIERS ============
     const resolvedFirst = firstName || item.name?.split(" ")[0] || "";
     const resolvedLast = lastName || item.name?.split(" ").slice(1).join(" ") || "";
     const resolvedCompany = company || item.company || "";
-
-    // ============ STEP 1: Try Apify (async with webhook) ============
-    if (publicLinkedinUrl) {
-      console.log("Step 1: Starting Apify async job with public URL:", publicLinkedinUrl);
-
-      try {
-        const webhookUrl = `${SUPABASE_URL}/functions/v1/webhooks-apify`;
-        const apifyRunId = await startApifyJob(
-          publicLinkedinUrl,
-          APIFY_API_KEY,
-          webhookUrl,
-          itemId,
-          searchType,
-          resolvedFirst,
-          resolvedLast,
-          resolvedCompany,
-          domain || ""
-        );
-
-        console.log("Apify job started, runId:", apifyRunId);
-
-        // Save run metadata
-        await supabase
-          .from("prospect_list_items")
-          .update({
-            apify_run_id: apifyRunId,
-            apify_called: true,
-          })
-          .eq("id", itemId);
-
-        // Return immediately — webhook will handle the rest
-        return new Response(
-          JSON.stringify({ status: "processing" }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      } catch (err) {
-        console.error("Apify start error:", err);
-        // Apify failed to start — fall through to Apollo directly
-        await supabase
-          .from("prospect_list_items")
-          .update({ apify_called: true, apify_finished: true, apify_email_found: false })
-          .eq("id", itemId);
-      }
-    } else {
-      console.log("Step 1: Apify skipped — no valid public LinkedIn URL available");
-      await supabase
-        .from("prospect_list_items")
-        .update({ apify_called: false, apify_finished: true })
-        .eq("id", itemId);
-    }
-
-    // ============ STEP 2: Apollo (direct, no Apify URL available) ============
-    // Only reaches here if Apify was skipped or failed to start
-    console.log("Step 2: Going directly to Apollo (no Apify URL or Apify start failed)");
 
     const hasStrongIdentifiers = !!(resolvedFirst && resolvedLast && (resolvedCompany || domain));
 
@@ -202,7 +127,9 @@ serve(async (req) => {
       );
     }
 
-    // Call Apollo synchronously since there's no Apify to wait for
+    // ============ APOLLO ENRICHMENT (synchronous) ============
+    console.log("Starting Apollo enrichment for:", { itemId, searchType, resolvedFirst, resolvedLast, resolvedCompany });
+
     try {
       const apolloResult = await enrichWithApollo(
         { firstName: resolvedFirst, lastName: resolvedLast, company: resolvedCompany, domain, email: item.email },
@@ -217,14 +144,14 @@ serve(async (req) => {
       const updateData: Record<string, unknown> = {
         enrichment_status: "done",
         apollo_called: true,
-        apollo_reason: "apify_skipped_no_public_url",
+        apollo_reason: "direct",
       };
       if (email) { updateData.email = email; updateData.enrichment_source = "apollo"; }
       if (phone) { updateData.phone = phone; updateData.enrichment_source = "apollo"; }
 
       await supabase.from("prospect_list_items").update(updateData).eq("id", itemId);
 
-      console.log("Apollo direct result:", { email, phone, found });
+      console.log("Apollo result:", { email, phone, found });
 
       return new Response(
         JSON.stringify({ email, phone, found, source: found ? "apollo" : null, status: "done" }),
@@ -261,150 +188,7 @@ serve(async (req) => {
 });
 
 // =============================================
-// Resolve any LinkedIn URL to public /in/ format
-// For Sales Navigator URLs, uses Unipile API lookup
-// =============================================
-async function resolvePublicLinkedInUrl(
-  url: string | null | undefined,
-  unipileApiKey: string,
-  unipileBaseUrl: string,
-  unipileAccountId: string
-): Promise<string | null> {
-  if (!url || typeof url !== "string") return null;
-  const cleaned = url.trim();
-  if (!cleaned) return null;
-
-  // Already a public URL
-  const publicMatch = cleaned.match(/linkedin\.com\/in\/([a-zA-Z0-9_-]+)/);
-  if (publicMatch) {
-    return `https://www.linkedin.com/in/${publicMatch[1]}`;
-  }
-
-  // Sales Navigator URL — resolve via Unipile
-  const salesMatch = cleaned.match(/linkedin\.com\/sales\/lead\/([a-zA-Z0-9_-]+)/);
-  if (salesMatch) {
-    const providerId = salesMatch[1];
-    console.log("Sales Navigator URL detected, resolving via Unipile. Provider ID:", providerId);
-
-    if (!unipileApiKey || !unipileBaseUrl || !unipileAccountId) {
-      console.warn("Unipile credentials missing, cannot resolve Sales Nav URL");
-      return null;
-    }
-
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
-
-      const lookupUrl = `${unipileBaseUrl}/api/v1/users/${encodeURIComponent(providerId)}?account_id=${encodeURIComponent(unipileAccountId)}`;
-      console.log("Unipile lookup URL:", lookupUrl);
-
-      const res = await fetch(lookupUrl, {
-        method: "GET",
-        headers: { "X-API-KEY": unipileApiKey, accept: "application/json" },
-        signal: controller.signal,
-      }).finally(() => clearTimeout(timeout));
-
-      if (!res.ok) {
-        const text = await res.text();
-        console.error(`Unipile lookup failed [${res.status}]:`, text);
-        return null;
-      }
-
-      const data = await res.json();
-      const publicIdentifier = data.public_identifier;
-
-      if (publicIdentifier) {
-        const resolvedUrl = `https://www.linkedin.com/in/${publicIdentifier}`;
-        console.log("Resolved public URL:", resolvedUrl);
-        return resolvedUrl;
-      }
-
-      console.warn("Unipile response missing public_identifier:", JSON.stringify(data));
-      return null;
-    } catch (err) {
-      console.error("Unipile lookup error:", err);
-      return null;
-    }
-  }
-
-  if (cleaned.includes("linkedin.com")) {
-    console.warn("Unrecognized LinkedIn URL format:", cleaned);
-  }
-
-  return null;
-}
-
-
-// =============================================
-// Start Apify job ASYNC (do NOT wait for result)
-// Returns the run ID for tracking
-// =============================================
-async function startApifyJob(
-  publicLinkedinUrl: string,
-  apiKey: string,
-  webhookUrl: string,
-  itemId: string,
-  searchType: string,
-  firstName: string,
-  lastName: string,
-  company: string,
-  domain: string
-): Promise<string> {
-  const actorId = "dev_fusion~linkedin-profile-scraper";
-
-  // Start the run with webhook inline (ad-hoc webhooks must be in run payload)
-  const runUrl = `https://api.apify.com/v2/acts/${actorId}/runs?token=${apiKey}`;
-
-  const webhookPayloadTemplate = JSON.stringify({
-    runId: "{{runId}}",
-    eventType: "{{eventType}}",
-    datasetId: "{{defaultDatasetId}}",
-    itemId,
-    searchType,
-    firstName,
-    lastName,
-    company,
-    domain,
-  });
-
-  const runBody = {
-    profileUrls: [publicLinkedinUrl],
-    webhooks: [
-      {
-        eventTypes: ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.ABORTED", "ACTOR.RUN.TIMED_OUT"],
-        requestUrl: webhookUrl,
-        payloadTemplate: webhookPayloadTemplate,
-        idempotencyKey: `enrich-${itemId}-${searchType}`,
-      },
-    ],
-  };
-
-  console.log("Apify start payload:", { profileUrls: [publicLinkedinUrl] });
-  console.log("Webhook URL:", webhookUrl);
-
-  const runResponse = await fetch(runUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(runBody),
-  });
-
-  if (!runResponse.ok) {
-    const text = await runResponse.text();
-    throw new Error(`Apify start error [${runResponse.status}]: ${text}`);
-  }
-
-  const runData = await runResponse.json();
-  const runId = runData.data?.id;
-  if (!runId) throw new Error("Apify did not return a run ID");
-
-  console.log("Apify run started with inline webhook:", runId);
-
-  return runId;
-}
-
-// =============================================
 // Apollo: People Match (scoped by searchType)
-// Auth: X-Api-Key header (official)
 // =============================================
 async function enrichWithApollo(
   params: {
@@ -422,7 +206,6 @@ async function enrichWithApollo(
   if (searchType === "email") {
     body.reveal_personal_emails = true;
   } else {
-    // Apollo requires webhook_url for reveal_phone_number — not supported in this flow
     console.log("Apollo: phone enrichment skipped (requires webhook_url)");
     return null;
   }
@@ -446,7 +229,6 @@ async function enrichWithApollo(
 
   const responseText = await response.text();
   console.log("Apollo response status:", response.status);
-  console.log("Apollo raw response:", responseText);
 
   if (!response.ok) {
     throw new Error(`Apollo match error [${response.status}]: ${responseText}`);
@@ -455,7 +237,7 @@ async function enrichWithApollo(
   const data = JSON.parse(responseText);
   const person = data.person;
   if (!person) {
-    console.log("Apollo: person is null — no match found");
+    console.log("Apollo: no match found");
     return null;
   }
 
