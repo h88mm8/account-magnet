@@ -1,4 +1,5 @@
-import { User, Link2, Bell, CreditCard } from "lucide-react";
+import { useState } from "react";
+import { User, Link2, Bell, CreditCard, MessageCircle } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,8 +8,13 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { useWhatsAppConnection } from "@/hooks/useWhatsAppConnection";
+import { WhatsAppConnectModal } from "@/components/WhatsAppConnect";
 
 const Settings = () => {
+  const { status: waStatus, disconnect: waDisconnect } = useWhatsAppConnection();
+  const [showWaModal, setShowWaModal] = useState(false);
+
   return (
     <div className="space-y-6 p-6 lg:p-8">
       <div>
@@ -98,6 +104,31 @@ const Settings = () => {
                 </div>
                 <Button variant="outline" size="sm">Conectar</Button>
               </div>
+
+              <div className="flex items-center justify-between rounded-lg border border-border p-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100">
+                    <MessageCircle className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">WhatsApp</p>
+                    <p className="text-xs text-muted-foreground">Envie mensagens diretamente aos leads</p>
+                  </div>
+                </div>
+                {waStatus === "connected" ? (
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="border-green-300 text-green-700">Conectado</Badge>
+                    <Button variant="ghost" size="sm" onClick={waDisconnect} className="text-xs text-muted-foreground">
+                      Desconectar
+                    </Button>
+                  </div>
+                ) : (
+                  <Button variant="outline" size="sm" onClick={() => setShowWaModal(true)}>
+                    Conectar
+                  </Button>
+                )}
+              </div>
+              <WhatsAppConnectModal open={showWaModal} onOpenChange={setShowWaModal} />
             </CardContent>
           </Card>
         </TabsContent>

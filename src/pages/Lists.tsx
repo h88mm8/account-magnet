@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { List, Trash2, Pencil, Search, ChevronRight, Building2, User, X, MapPin, Briefcase, Users, Factory, UserCircle, Mail, Phone, Loader2, CheckSquare } from "lucide-react";
+import { List, Trash2, Pencil, Search, ChevronRight, Building2, User, X, MapPin, Briefcase, Users, Factory, UserCircle, Mail, Phone, Loader2, CheckSquare, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { LeadMiniCard } from "@/components/LeadMiniCard";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Progress } from "@/components/ui/progress";
+import { WhatsAppButton } from "@/components/WhatsAppConnect";
 
 const FALLBACK = "Não informado";
 import {
@@ -560,6 +561,7 @@ export default function Lists() {
                                 )}
                                 {item.phone ? "Telefone encontrado" : item.phone_checked_at ? "Tentar novamente" : "Buscar Celular"}
                               </Button>
+                              <WhatsAppButton phone={item.phone} />
                             </div>
                           </TableCell>
                         </>
