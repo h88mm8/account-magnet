@@ -352,17 +352,40 @@ async function startApifyJob(
 ): Promise<string> {
   const actorId = "dev_fusion~linkedin-profile-scraper";
 
-  // Step 1: Start the run (async, do NOT use run-sync)
+  // Start the run with webhook inline (ad-hoc webhooks must be in run payload)
   const runUrl = `https://api.apify.com/v2/acts/${actorId}/runs?token=${apiKey}`;
 
+  const webhookPayloadTemplate = JSON.stringify({
+    runId: "{{runId}}",
+    eventType: "{{eventType}}",
+    datasetId: "{{defaultDatasetId}}",
+    itemId,
+    searchType,
+    firstName,
+    lastName,
+    company,
+    domain,
+  });
+
+  const runBody = {
+    profileUrls: [publicLinkedinUrl],
+    webhooks: [
+      {
+        eventTypes: ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.ABORTED", "ACTOR.RUN.TIMED_OUT"],
+        requestUrl: webhookUrl,
+        payloadTemplate: webhookPayloadTemplate,
+        idempotencyKey: `enrich-${itemId}-${searchType}`,
+      },
+    ],
+  };
+
   console.log("Apify start payload:", { profileUrls: [publicLinkedinUrl] });
+  console.log("Webhook URL:", webhookUrl);
 
   const runResponse = await fetch(runUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      profileUrls: [publicLinkedinUrl],
-    }),
+    body: JSON.stringify(runBody),
   });
 
   if (!runResponse.ok) {
@@ -374,47 +397,7 @@ async function startApifyJob(
   const runId = runData.data?.id;
   if (!runId) throw new Error("Apify did not return a run ID");
 
-  console.log("Apify run started:", runId);
-
-  // Step 2: Register webhook for this run
-  const webhookPayload = {
-    eventTypes: ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.ABORTED", "ACTOR.RUN.TIMED_OUT"],
-    requestUrl: webhookUrl,
-    payloadTemplate: JSON.stringify({
-      runId: "{{runId}}",
-      eventType: "{{eventType}}",
-      datasetId: "{{defaultDatasetId}}",
-      // Custom data passed through webhook
-      itemId,
-      searchType,
-      firstName,
-      lastName,
-      company,
-      domain,
-    }),
-    isAdHoc: true,
-    idempotencyKey: `enrich-${itemId}-${searchType}`,
-  };
-
-  console.log("Registering Apify webhook for run:", runId);
-
-  const webhookResponse = await fetch(
-    `https://api.apify.com/v2/webhooks?token=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(webhookPayload),
-    }
-  );
-
-  if (!webhookResponse.ok) {
-    const text = await webhookResponse.text();
-    console.error("Webhook registration failed:", text);
-    // Don't throw — we can still poll as fallback, but log the error
-    console.warn("Webhook registration failed, run will still complete but webhook won't fire");
-  } else {
-    console.log("Apify webhook registered successfully");
-  }
+  console.log("Apify run started with inline webhook:", runId);
 
   return runId;
 }
