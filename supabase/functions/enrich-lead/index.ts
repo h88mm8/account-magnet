@@ -114,8 +114,17 @@ serve(async (req) => {
       );
     }
 
-    // ============ RESOLVE IDENTIFIERS ============
-    const publicLinkedinUrl = toPublicLinkedInUrl(linkedinUrl || item.linkedin_url);
+// ============ RESOLVE IDENTIFIERS ============
+    const UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY") || "";
+    const UNIPILE_BASE_URL = Deno.env.get("UNIPILE_BASE_URL") || "";
+    const UNIPILE_ACCOUNT_ID = Deno.env.get("UNIPILE_ACCOUNT_ID") || "";
+
+    const publicLinkedinUrl = await resolvePublicLinkedInUrl(
+      linkedinUrl || item.linkedin_url,
+      UNIPILE_API_KEY,
+      UNIPILE_BASE_URL,
+      UNIPILE_ACCOUNT_ID
+    );
     const resolvedFirst = firstName || item.name?.split(" ")[0] || "";
     const resolvedLast = lastName || item.name?.split(" ").slice(1).join(" ") || "";
     const resolvedCompany = company || item.company || "";
@@ -252,30 +261,79 @@ serve(async (req) => {
 });
 
 // =============================================
-// Convert any LinkedIn URL to public /in/ format
+// Resolve any LinkedIn URL to public /in/ format
+// For Sales Navigator URLs, uses Unipile API lookup
 // =============================================
-function toPublicLinkedInUrl(url: string | null | undefined): string | null {
+async function resolvePublicLinkedInUrl(
+  url: string | null | undefined,
+  unipileApiKey: string,
+  unipileBaseUrl: string,
+  unipileAccountId: string
+): Promise<string | null> {
   if (!url || typeof url !== "string") return null;
   const cleaned = url.trim();
   if (!cleaned) return null;
 
+  // Already a public URL
   const publicMatch = cleaned.match(/linkedin\.com\/in\/([a-zA-Z0-9_-]+)/);
   if (publicMatch) {
     return `https://www.linkedin.com/in/${publicMatch[1]}`;
   }
 
-  if (cleaned.includes("linkedin.com/sales/")) {
-    console.warn("Sales Navigator URL detected, cannot convert for Apify:", cleaned);
-    return null;
+  // Sales Navigator URL — resolve via Unipile
+  const salesMatch = cleaned.match(/linkedin\.com\/sales\/lead\/([a-zA-Z0-9_-]+)/);
+  if (salesMatch) {
+    const providerId = salesMatch[1];
+    console.log("Sales Navigator URL detected, resolving via Unipile. Provider ID:", providerId);
+
+    if (!unipileApiKey || !unipileBaseUrl || !unipileAccountId) {
+      console.warn("Unipile credentials missing, cannot resolve Sales Nav URL");
+      return null;
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+
+      const lookupUrl = `${unipileBaseUrl}/api/v1/users/${encodeURIComponent(providerId)}?account_id=${encodeURIComponent(unipileAccountId)}`;
+      console.log("Unipile lookup URL:", lookupUrl);
+
+      const res = await fetch(lookupUrl, {
+        method: "GET",
+        headers: { "X-API-KEY": unipileApiKey, accept: "application/json" },
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeout));
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.error(`Unipile lookup failed [${res.status}]:`, text);
+        return null;
+      }
+
+      const data = await res.json();
+      const publicIdentifier = data.public_identifier;
+
+      if (publicIdentifier) {
+        const resolvedUrl = `https://www.linkedin.com/in/${publicIdentifier}`;
+        console.log("Resolved public URL:", resolvedUrl);
+        return resolvedUrl;
+      }
+
+      console.warn("Unipile response missing public_identifier:", JSON.stringify(data));
+      return null;
+    } catch (err) {
+      console.error("Unipile lookup error:", err);
+      return null;
+    }
   }
 
   if (cleaned.includes("linkedin.com")) {
     console.warn("Unrecognized LinkedIn URL format:", cleaned);
-    return null;
   }
 
   return null;
 }
+
 
 // =============================================
 // Start Apify job ASYNC (do NOT wait for result)
