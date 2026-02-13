@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.webhooks-apify]
 verify_jwt = false
+
+[functions.webhooks-apollo]
+verify_jwt = false

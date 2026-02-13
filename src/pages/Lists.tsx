@@ -35,7 +35,42 @@ export default function Lists() {
   const [enrichingEmail, setEnrichingEmail] = useState<Set<string>>(new Set());
   const [enrichingPhone, setEnrichingPhone] = useState<Set<string>>(new Set());
 
-  // Realtime removed — enrichment is now fully synchronous
+  // Realtime subscription for async phone enrichment (Apollo webhook)
+  useEffect(() => {
+    if (!selectedListId) return;
+
+    const channel = supabase
+      .channel(`phone-enrichment-${selectedListId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "prospect_list_items",
+          filter: `list_id=eq.${selectedListId}`,
+        },
+        (payload) => {
+          const updated = payload.new as ProspectListItem;
+          if (!updated) return;
+
+          setListItems((prev) =>
+            prev.map((i) => {
+              if (i.id !== updated.id) return i;
+              // Only react to phone enrichment completion
+              if (updated.enrichment_status === "done" && enrichingPhone.has(updated.id)) {
+                setEnrichingPhone((p) => { const n = new Set(p); n.delete(updated.id); return n; });
+              }
+              return { ...i, ...updated };
+            })
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedListId]);
 
   // Track which items already had email/phone to avoid duplicate toasts
   const item_had_email = useRef<Set<string>>(new Set());
@@ -84,8 +119,11 @@ export default function Lists() {
             ? (searchType === "email" ? data.email : data.phone)
             : `${searchType === "email" ? "Email" : "Telefone"} já foi buscado anteriormente sem resultado.`,
         });
+      } else if (data.status === "processing") {
+        // Async phone enrichment — keep loading, Realtime will update
+        toast({ title: "Buscando telefone...", description: "Aguardando resultado do Apollo. Você será notificado." });
       } else if (data.status === "done") {
-        // Synchronous result (Apollo direct, no Apify)
+        // Synchronous result (email)
         setLoading((prev) => { const next = new Set(prev); next.delete(item.id); return next; });
         if (data.found) {
           toast({

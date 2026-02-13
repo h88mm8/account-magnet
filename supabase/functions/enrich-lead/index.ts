@@ -127,19 +127,61 @@ serve(async (req) => {
       );
     }
 
-    // ============ APOLLO ENRICHMENT (synchronous) ============
+    // ============ APOLLO ENRICHMENT ============
     console.log("Starting Apollo enrichment for:", { itemId, searchType, resolvedFirst, resolvedLast, resolvedCompany });
 
     try {
+      if (searchType === "phone") {
+        // Phone enrichment is ASYNC — Apollo requires webhook_url
+        const webhookBaseUrl = `${SUPABASE_URL}/functions/v1/webhooks-apollo`;
+        const webhookUrl = `${webhookBaseUrl}?itemId=${encodeURIComponent(itemId)}&searchType=phone`;
+
+        const apolloBody: Record<string, unknown> = {
+          reveal_phone_number: true,
+          webhook_url: webhookUrl,
+        };
+        if (resolvedFirst) apolloBody.first_name = resolvedFirst;
+        if (resolvedLast) apolloBody.last_name = resolvedLast;
+        if (resolvedCompany) apolloBody.organization_name = resolvedCompany;
+        if (domain) apolloBody.domain = domain;
+        if (item.email) apolloBody.email = item.email;
+
+        console.log("Apollo /people/match (phone async) payload:", JSON.stringify(apolloBody));
+
+        const response = await fetch("https://api.apollo.io/api/v1/people/match", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": APOLLO_API_KEY,
+          },
+          body: JSON.stringify(apolloBody),
+        });
+
+        const responseText = await response.text();
+        console.log("Apollo phone response status:", response.status);
+
+        if (!response.ok) {
+          throw new Error(`Apollo match error [${response.status}]: ${responseText}`);
+        }
+
+        // Apollo accepted — webhook will deliver phone data later
+        // Keep status as "processing" — webhook will set "done"
+        console.log("Apollo phone enrichment dispatched, waiting for webhook");
+
+        return new Response(
+          JSON.stringify({ found: false, status: "processing", message: "Aguardando resultado do Apollo via webhook" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Email enrichment is SYNC
       const apolloResult = await enrichWithApollo(
         { firstName: resolvedFirst, lastName: resolvedLast, company: resolvedCompany, domain, email: item.email },
-        APOLLO_API_KEY,
-        searchType
+        APOLLO_API_KEY
       );
 
-      const email = searchType === "email" ? (apolloResult?.email || null) : null;
-      const phone = searchType === "phone" ? (apolloResult?.phone || null) : null;
-      const found = !!(email || phone);
+      const email = apolloResult?.email || null;
+      const found = !!email;
 
       const updateData: Record<string, unknown> = {
         enrichment_status: "done",
@@ -147,14 +189,13 @@ serve(async (req) => {
         apollo_reason: "direct",
       };
       if (email) { updateData.email = email; updateData.enrichment_source = "apollo"; }
-      if (phone) { updateData.phone = phone; updateData.enrichment_source = "apollo"; }
 
       await supabase.from("prospect_list_items").update(updateData).eq("id", itemId);
 
-      console.log("Apollo result:", { email, phone, found });
+      console.log("Apollo result:", { email, found });
 
       return new Response(
-        JSON.stringify({ email, phone, found, source: found ? "apollo" : null, status: "done" }),
+        JSON.stringify({ email, found, source: found ? "apollo" : null, status: "done" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     } catch (err) {
@@ -198,17 +239,11 @@ async function enrichWithApollo(
     domain?: string;
     email?: string | null;
   },
-  apiKey: string,
-  searchType: "email" | "phone"
-): Promise<{ email?: string; phone?: string } | null> {
-  const body: Record<string, unknown> = {};
-
-  if (searchType === "email") {
-    body.reveal_personal_emails = true;
-  } else {
-    console.log("Apollo: phone enrichment skipped (requires webhook_url)");
-    return null;
-  }
+  apiKey: string
+): Promise<{ email?: string } | null> {
+  const body: Record<string, unknown> = {
+    reveal_personal_emails: true,
+  };
 
   if (params.firstName) body.first_name = params.firstName;
   if (params.lastName) body.last_name = params.lastName;
@@ -243,23 +278,7 @@ async function enrichWithApollo(
 
   console.log("Apollo matched person:", person.id, person.name);
 
-  const result: { email?: string; phone?: string } = {};
-
-  if (searchType === "email") {
-    result.email = person.email || person.personal_emails?.[0] || null;
-  } else {
-    const mobile = person.phone_numbers?.find(
-      (p: { type?: string; sanitized_number?: string }) =>
-        p.type === "mobile" && p.sanitized_number
-    );
-    result.phone =
-      mobile?.sanitized_number ||
-      person.phone_numbers?.find(
-        (p: { sanitized_number?: string }) => p.sanitized_number
-      )?.sanitized_number ||
-      person.mobile_phone ||
-      null;
-  }
-
-  return result;
+  return {
+    email: person.email || person.personal_emails?.[0] || null,
+  };
 }
