@@ -84,32 +84,6 @@ const Settings = () => {
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between rounded-lg border border-border p-4">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                    <Link2 className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">Unipile</p>
-                    <p className="text-xs text-muted-foreground">API de busca LinkedIn Sales Navigator</p>
-                  </div>
-                </div>
-                <Badge variant="outline" className="border-primary/30 text-primary">Conectado</Badge>
-              </div>
-
-              <div className="flex items-center justify-between rounded-lg border border-border p-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                    <Link2 className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">LinkedIn</p>
-                    <p className="text-xs text-muted-foreground">Conta do Sales Navigator</p>
-                  </div>
-                </div>
-                <Button variant="outline" size="sm">Conectar</Button>
-              </div>
-
-              <div className="flex items-center justify-between rounded-lg border border-border p-4">
-                <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100">
                     <MessageCircle className="h-5 w-5 text-green-600" />
                   </div>
