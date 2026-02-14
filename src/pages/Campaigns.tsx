@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Plus, Play, Pause, Mail, MessageSquare, Linkedin, Send, Users, CheckCircle, XCircle, Eye, Reply } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Plus, Play, Pause, Mail, MessageSquare, Linkedin, Send, Users, CheckCircle, XCircle, Eye, Reply, AlertTriangle } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,17 +10,20 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useCampaigns, useCreateCampaign, useActivateCampaign, usePauseCampaign, useCampaignLeads, useAddLeadsToCampaign, type Campaign } from "@/hooks/useCampaigns";
+import { useCampaigns, useCreateCampaign, useActivateCampaign, usePauseCampaign, useCampaignLeads, useAddLeadsToCampaign, checkWhatsAppConnection, type Campaign } from "@/hooks/useCampaigns";
 import { useProspectLists } from "@/hooks/useProspectLists";
+import { useAuth } from "@/contexts/AuthContext";
+import { useWhatsAppConnection } from "@/hooks/useWhatsAppConnection";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
 
-const channelIcons = {
+const channelIcons: Record<string, any> = {
   whatsapp: MessageSquare,
   email: Mail,
   linkedin: Linkedin,
 };
 
-const channelLabels = {
+const channelLabels: Record<string, string> = {
   whatsapp: "WhatsApp",
   email: "Email",
   linkedin: "LinkedIn",
@@ -42,6 +45,9 @@ const linkedinTypeLabels: Record<string, string> = {
 
 const Campaigns = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { status: waStatus } = useWhatsAppConnection();
   const { data: campaigns, isLoading } = useCampaigns();
   const { lists } = useProspectLists();
   const createCampaign = useCreateCampaign();
@@ -52,7 +58,6 @@ const Campaigns = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
 
-  // Create form state
   const [name, setName] = useState("");
   const [channel, setChannel] = useState<string>("");
   const [linkedinType, setLinkedinType] = useState<string>("");
@@ -62,13 +67,8 @@ const Campaigns = () => {
   const [dailyLimit, setDailyLimit] = useState("50");
 
   const resetForm = () => {
-    setName("");
-    setChannel("");
-    setLinkedinType("");
-    setListId("");
-    setSubject("");
-    setMessageTemplate("");
-    setDailyLimit("50");
+    setName(""); setChannel(""); setLinkedinType(""); setListId("");
+    setSubject(""); setMessageTemplate(""); setDailyLimit("50");
   };
 
   const handleCreate = async () => {
@@ -96,9 +96,9 @@ const Campaigns = () => {
         daily_limit: parseInt(dailyLimit) || 50,
       });
 
-      // If list selected, add all leads from that list
       if (listId && campaign) {
-        const { data: items } = await (await import("@/integrations/supabase/client")).supabase
+        const { supabase } = await import("@/integrations/supabase/client");
+        const { data: items } = await supabase
           .from("prospect_list_items")
           .select("id")
           .eq("list_id", listId)
@@ -119,6 +119,23 @@ const Campaigns = () => {
     }
   };
 
+  const handleActivate = async (campaign: Campaign) => {
+    // Pre-dispatch validation for WhatsApp
+    if (campaign.channel === "whatsapp" && user) {
+      const connected = await checkWhatsAppConnection(user.id);
+      if (!connected) {
+        toast({
+          title: "WhatsApp não conectado",
+          description: "Conecte seu WhatsApp nas Configurações antes de ativar a campanha.",
+          variant: "destructive",
+        });
+        navigate("/settings?tab=integrations");
+        return;
+      }
+    }
+    activateCampaign.mutate(campaign.id);
+  };
+
   return (
     <div className="space-y-6 p-6 lg:p-8">
       <div className="flex items-center justify-between">
@@ -133,6 +150,25 @@ const Campaigns = () => {
           Nova Campanha
         </Button>
       </div>
+
+      {/* WhatsApp disconnected warning */}
+      {waStatus !== "connected" && (
+        <Card className="border border-amber-300 bg-amber-50 shadow-none dark:border-amber-700 dark:bg-amber-950/30">
+          <CardContent className="flex items-center gap-3 p-4">
+            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">WhatsApp desconectado</p>
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                Campanhas de WhatsApp não poderão ser disparadas sem uma conexão ativa.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => navigate("/settings?tab=integrations")}
+              className="border-amber-400 text-amber-700 hover:bg-amber-100">
+              Conectar
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Campaign list */}
       {isLoading ? (
@@ -152,7 +188,7 @@ const Campaigns = () => {
       ) : (
         <div className="space-y-3">
           {campaigns.map((c) => {
-            const Icon = channelIcons[c.channel];
+            const Icon = channelIcons[c.channel] || Send;
             const sb = statusBadge[c.status] || statusBadge.draft;
             return (
               <Card
@@ -186,11 +222,11 @@ const Campaigns = () => {
                       <span className="flex items-center gap-1"><XCircle className="h-3 w-3" />{c.total_failed}</span>
                     </div>
                     <Badge variant={sb.variant}>{sb.label}</Badge>
-                    {c.status === "draft" && (
+                    {(c.status === "draft" || c.status === "paused") && (
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={(e) => { e.stopPropagation(); activateCampaign.mutate(c.id); }}
+                        onClick={(e) => { e.stopPropagation(); handleActivate(c); }}
                       >
                         <Play className="mr-1 h-3 w-3" /> Ativar
                       </Button>
@@ -234,6 +270,13 @@ const Campaigns = () => {
                 </SelectContent>
               </Select>
             </div>
+
+            {channel === "whatsapp" && waStatus !== "connected" && (
+              <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-700 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span>WhatsApp não conectado. <button className="underline font-medium" onClick={() => navigate("/settings?tab=integrations")}>Conectar agora</button></span>
+              </div>
+            )}
 
             {channel === "linkedin" && (
               <div>
@@ -292,7 +335,6 @@ const Campaigns = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Campaign detail dialog */}
       {selectedCampaign && (
         <CampaignDetail campaign={selectedCampaign} onClose={() => setSelectedCampaign(null)} />
       )}
@@ -302,7 +344,7 @@ const Campaigns = () => {
 
 function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: () => void }) {
   const { data: leads, isLoading } = useCampaignLeads(campaign.id);
-  const Icon = channelIcons[campaign.channel];
+  const Icon = channelIcons[campaign.channel] || Send;
 
   const statusColors: Record<string, string> = {
     pending: "bg-muted text-muted-foreground",
@@ -313,7 +355,6 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
     replied: "bg-emerald-100 text-emerald-700",
     failed: "bg-destructive/10 text-destructive",
     accepted: "bg-violet-100 text-violet-700",
-    bounced: "bg-red-100 text-red-700",
   };
 
   return (
@@ -326,7 +367,6 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
           </DialogTitle>
         </DialogHeader>
 
-        {/* Stats */}
         <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
           {[
             { label: "Enviados", val: campaign.total_sent, icon: Send },
@@ -344,7 +384,6 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
           ))}
         </div>
 
-        {/* Lead statuses */}
         <div className="max-h-[300px] overflow-auto">
           {isLoading ? (
             <Skeleton className="h-40 w-full" />
@@ -356,6 +395,7 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
                 <TableRow>
                   <TableHead>Lead ID</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Erro</TableHead>
                   <TableHead>Enviado em</TableHead>
                   <TableHead>Atualizado</TableHead>
                 </TableRow>
@@ -368,6 +408,9 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
                       <Badge className={statusColors[l.status] || ""} variant="secondary">
                         {l.status}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="max-w-[150px] truncate text-xs text-destructive">
+                      {l.error_message || "—"}
                     </TableCell>
                     <TableCell className="text-xs">{l.sent_at ? new Date(l.sent_at).toLocaleString("pt-BR") : "—"}</TableCell>
                     <TableCell className="text-xs">{new Date(l.updated_at).toLocaleString("pt-BR")}</TableCell>

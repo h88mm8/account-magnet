@@ -102,11 +102,23 @@ export function useCreateCampaign() {
   });
 }
 
+/** Check if user has an active WhatsApp connection */
+export async function checkWhatsAppConnection(userId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from("whatsapp_connections")
+    .select("status")
+    .eq("user_id", userId)
+    .eq("status", "connected")
+    .single();
+  return !!data;
+}
+
 export function useActivateCampaign() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (campaignId: string) => {
+      // Activate the campaign
       const { data, error } = await supabase
         .from("campaigns")
         .update({ status: "active" })
@@ -114,10 +126,22 @@ export function useActivateCampaign() {
         .select()
         .single();
       if (error) throw error;
+
+      // Trigger the queue processor
+      try {
+        await supabase.functions.invoke("process-campaign-queue", {
+          body: { campaign_id: campaignId },
+        });
+      } catch (e) {
+        console.error("Queue trigger error (non-blocking):", e);
+      }
+
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-metrics"] });
+      queryClient.invalidateQueries({ queryKey: ["real-metrics"] });
     },
   });
 }
