@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 Deno.serve(async (req) => {
@@ -20,24 +20,28 @@ Deno.serve(async (req) => {
     const body = await req.json();
     console.log("LinkedIn webhook received:", JSON.stringify(body));
 
-    const event = body.event || body.type;
+    const event = body.event || body.type || "";
     const data = body.data || body;
 
     // Handle connection accepted events
     if (event === "connection_accepted" || event === "invitation_accepted") {
-      const linkedinUrl = data.provider_id || data.linkedin_url || data.profile_url;
+      const linkedinId = data.provider_id || data.public_identifier || data.linkedin_url || data.profile_url;
 
-      if (linkedinUrl) {
-        // Find campaign leads with this linkedin URL that were sent as connection_request
+      if (linkedinId) {
+        // Find leads matching this linkedin identifier (by URL or provider_id)
         const { data: leads } = await supabase
           .from("prospect_list_items")
-          .select("id")
-          .eq("linkedin_url", linkedinUrl);
+          .select("id, linkedin_url");
 
-        if (leads && leads.length > 0) {
-          const leadIds = leads.map((l) => l.id);
+        // Match by provider_id or URL containing the identifier
+        const matchedLeads = (leads || []).filter((l) => {
+          if (!l.linkedin_url) return false;
+          return l.linkedin_url === linkedinId || l.linkedin_url.includes(linkedinId) || linkedinId.includes(l.linkedin_url.split("/in/")[1]?.split("?")[0] || "___none___");
+        });
 
-          // Update campaign_leads status to accepted
+        if (matchedLeads.length > 0) {
+          const leadIds = matchedLeads.map((l) => l.id);
+
           const { data: updatedLeads } = await supabase
             .from("campaign_leads")
             .update({
@@ -50,7 +54,7 @@ Deno.serve(async (req) => {
             .select("campaign_id");
 
           // Update campaign counters
-          if (updatedLeads) {
+          if (updatedLeads && updatedLeads.length > 0) {
             const campaignIds = [...new Set(updatedLeads.map((l) => l.campaign_id))];
             for (const cid of campaignIds) {
               const count = updatedLeads.filter((l) => l.campaign_id === cid).length;
@@ -73,32 +77,65 @@ Deno.serve(async (req) => {
 
     // Handle message delivered
     if (event === "message_delivered" || event === "delivered") {
-      // Update status based on webhook data
-      const messageId = data.message_id || data.id;
-      if (messageId) {
-        await supabase
-          .from("campaign_leads")
-          .update({
-            status: "delivered",
-            delivered_at: new Date().toISOString(),
-            webhook_data: body,
-          })
-          .eq("webhook_data->>message_id", messageId);
+      const linkedinId = data.provider_id || data.attendee_provider_id;
+      if (linkedinId) {
+        const { data: leads } = await supabase
+          .from("prospect_list_items")
+          .select("id, linkedin_url");
+
+        const matchedLeads = (leads || []).filter((l) =>
+          l.linkedin_url && (l.linkedin_url.includes(linkedinId) || linkedinId === l.linkedin_url)
+        );
+
+        if (matchedLeads.length > 0) {
+          const leadIds = matchedLeads.map((l) => l.id);
+          const { data: updated } = await supabase
+            .from("campaign_leads")
+            .update({
+              status: "delivered",
+              delivered_at: new Date().toISOString(),
+              webhook_data: body,
+            })
+            .in("lead_id", leadIds)
+            .eq("status", "sent")
+            .select("campaign_id");
+
+          if (updated && updated.length > 0) {
+            const campaignIds = [...new Set(updated.map((l) => l.campaign_id))];
+            for (const cid of campaignIds) {
+              const count = updated.filter((l) => l.campaign_id === cid).length;
+              const { data: campaign } = await supabase
+                .from("campaigns")
+                .select("total_delivered")
+                .eq("id", cid)
+                .single();
+              if (campaign) {
+                await supabase
+                  .from("campaigns")
+                  .update({ total_delivered: (campaign.total_delivered || 0) + count })
+                  .eq("id", cid);
+              }
+            }
+          }
+        }
       }
     }
 
-    // Handle message reply
+    // Handle reply
     if (event === "message_reply" || event === "reply" || event === "new_message") {
-      const linkedinUrl = data.provider_id || data.sender_provider_id;
-      if (linkedinUrl) {
+      const linkedinId = data.provider_id || data.sender_provider_id;
+      if (linkedinId) {
         const { data: leads } = await supabase
           .from("prospect_list_items")
-          .select("id")
-          .eq("linkedin_url", linkedinUrl);
+          .select("id, linkedin_url");
 
-        if (leads && leads.length > 0) {
-          const leadIds = leads.map((l) => l.id);
-          const { data: updatedLeads } = await supabase
+        const matchedLeads = (leads || []).filter((l) =>
+          l.linkedin_url && (l.linkedin_url.includes(linkedinId) || linkedinId === l.linkedin_url)
+        );
+
+        if (matchedLeads.length > 0) {
+          const leadIds = matchedLeads.map((l) => l.id);
+          const { data: updated } = await supabase
             .from("campaign_leads")
             .update({
               status: "replied",
@@ -109,10 +146,10 @@ Deno.serve(async (req) => {
             .in("status", ["sent", "delivered", "accepted"])
             .select("campaign_id");
 
-          if (updatedLeads) {
-            const campaignIds = [...new Set(updatedLeads.map((l) => l.campaign_id))];
+          if (updated && updated.length > 0) {
+            const campaignIds = [...new Set(updated.map((l) => l.campaign_id))];
             for (const cid of campaignIds) {
-              const count = updatedLeads.filter((l) => l.campaign_id === cid).length;
+              const count = updated.filter((l) => l.campaign_id === cid).length;
               const { data: campaign } = await supabase
                 .from("campaigns")
                 .select("total_replied")
@@ -136,7 +173,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error("LinkedIn webhook error:", err);
     return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
