@@ -90,6 +90,7 @@ serve(async (req) => {
           expiresOn,
           notify_url: webhookUrl,
           name: `whatsapp-${user.id}`,
+          sync_history: false,
         }),
       });
 
