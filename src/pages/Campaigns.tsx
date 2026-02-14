@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Plus, Play, Pause, Mail, MessageSquare, Linkedin, Send, Users, CheckCircle, XCircle, Eye, Reply, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -344,7 +344,27 @@ const Campaigns = () => {
 
 function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: () => void }) {
   const { data: leads, isLoading } = useCampaignLeads(campaign.id);
+  const [leadNames, setLeadNames] = useState<Record<string, string>>({});
   const Icon = channelIcons[campaign.channel] || Send;
+
+  // Fetch lead names for display
+  useEffect(() => {
+    if (!leads || leads.length === 0) return;
+    const fetchNames = async () => {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const ids = leads.map((l) => l.lead_id);
+      const { data } = await supabase
+        .from("prospect_list_items")
+        .select("id, name, email, phone")
+        .in("id", ids);
+      if (data) {
+        const map: Record<string, string> = {};
+        data.forEach((d) => { map[d.id] = d.name || d.email || d.phone || d.id.slice(0, 8); });
+        setLeadNames(map);
+      }
+    };
+    fetchNames();
+  }, [leads]);
 
   const statusColors: Record<string, string> = {
     pending: "bg-muted text-muted-foreground",
@@ -357,6 +377,17 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
     accepted: "bg-violet-100 text-violet-700",
   };
 
+  const statusLabels: Record<string, string> = {
+    pending: "Pendente",
+    queued: "Na fila",
+    sent: "Enviado",
+    delivered: "Entregue",
+    opened: "Aberto",
+    replied: "Respondido",
+    failed: "Falha",
+    accepted: "Aceito",
+  };
+
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-2xl">
@@ -364,6 +395,11 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
           <DialogTitle className="flex items-center gap-2">
             <Icon className="h-5 w-5 text-primary" />
             {campaign.name}
+            {campaign.linkedin_type && (
+              <Badge variant="outline" className="ml-2 text-xs font-normal">
+                {linkedinTypeLabels[campaign.linkedin_type]}
+              </Badge>
+            )}
           </DialogTitle>
         </DialogHeader>
 
@@ -393,27 +429,27 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Lead ID</TableHead>
+                  <TableHead>Lead</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Erro</TableHead>
                   <TableHead>Enviado em</TableHead>
-                  <TableHead>Atualizado</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {leads.map((l) => (
                   <TableRow key={l.id}>
-                    <TableCell className="font-mono text-xs">{l.lead_id.slice(0, 8)}...</TableCell>
+                    <TableCell className="text-sm font-medium">
+                      {leadNames[l.lead_id] || l.lead_id.slice(0, 8) + "..."}
+                    </TableCell>
                     <TableCell>
                       <Badge className={statusColors[l.status] || ""} variant="secondary">
-                        {l.status}
+                        {statusLabels[l.status] || l.status}
                       </Badge>
                     </TableCell>
                     <TableCell className="max-w-[150px] truncate text-xs text-destructive">
                       {l.error_message || "—"}
                     </TableCell>
                     <TableCell className="text-xs">{l.sent_at ? new Date(l.sent_at).toLocaleString("pt-BR") : "—"}</TableCell>
-                    <TableCell className="text-xs">{new Date(l.updated_at).toLocaleString("pt-BR")}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

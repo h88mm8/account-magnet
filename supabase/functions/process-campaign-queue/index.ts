@@ -6,6 +6,17 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+/**
+ * Extract LinkedIn public identifier from a URL like
+ * https://www.linkedin.com/in/john-doe or /in/john-doe-123abc
+ */
+function extractLinkedInId(url: string): string {
+  // If it's already a provider_id (no slashes), return as-is
+  if (!url.includes("/")) return url;
+  const match = url.match(/\/in\/([^/?#]+)/);
+  return match ? match[1] : url;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -21,14 +32,12 @@ Deno.serve(async (req) => {
   const UNIPILE_ACCOUNT_ID = Deno.env.get("UNIPILE_ACCOUNT_ID");
 
   try {
-    // Optionally filter by a single campaign
     let campaignFilter: string | null = null;
     try {
       const body = await req.json();
       campaignFilter = body?.campaign_id || null;
     } catch { /* no body */ }
 
-    // Get active campaigns
     let query = supabase.from("campaigns").select("*").eq("status", "active");
     if (campaignFilter) query = query.eq("id", campaignFilter);
 
@@ -47,6 +56,7 @@ Deno.serve(async (req) => {
       const campResult = { campaign_id: campaign.id, sent: 0, failed: 0, errors: [] as string[] };
 
       // WhatsApp: validate user has active connection
+      let waAccountId: string | null = null;
       if (campaign.channel === "whatsapp") {
         const { data: waConn } = await supabase
           .from("whatsapp_connections")
@@ -57,7 +67,6 @@ Deno.serve(async (req) => {
 
         if (!waConn || !waConn.unipile_account_id) {
           campResult.errors.push("WhatsApp not connected for this user");
-          // Mark all pending leads as failed with connection error
           await supabase
             .from("campaign_leads")
             .update({
@@ -67,19 +76,14 @@ Deno.serve(async (req) => {
             })
             .eq("campaign_id", campaign.id)
             .eq("status", "pending");
-
-          // Pause the campaign
-          await supabase
-            .from("campaigns")
-            .update({ status: "paused" })
-            .eq("id", campaign.id);
-
+          await supabase.from("campaigns").update({ status: "paused" }).eq("id", campaign.id);
           results.push(campResult);
           continue;
         }
+        waAccountId = waConn.unipile_account_id;
       }
 
-      // Count sent today
+      // Count sent today for daily limit
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
       const { count: sentToday } = await supabase
@@ -104,13 +108,11 @@ Deno.serve(async (req) => {
         .limit(remaining);
 
       if (!pendingLeads || pendingLeads.length === 0) {
-        // Check if campaign is complete
         const { count: pendingCount } = await supabase
           .from("campaign_leads")
           .select("id", { count: "exact", head: true })
           .eq("campaign_id", campaign.id)
           .in("status", ["pending", "queued"]);
-
         if (pendingCount === 0) {
           await supabase.from("campaigns").update({ status: "completed" }).eq("id", campaign.id);
         }
@@ -118,24 +120,11 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Move to queued
-      const leadIds = pendingLeads.map((l) => l.id);
-      await supabase.from("campaign_leads").update({ status: "queued" }).in("id", leadIds);
-
-      // Get WhatsApp account_id for WhatsApp campaigns
-      let waAccountId: string | null = null;
-      if (campaign.channel === "whatsapp") {
-        const { data: waConn } = await supabase
-          .from("whatsapp_connections")
-          .select("unipile_account_id")
-          .eq("user_id", campaign.user_id)
-          .eq("status", "connected")
-          .single();
-        waAccountId = waConn?.unipile_account_id || null;
-      }
-
       // Process each lead
       for (const lead of pendingLeads) {
+        // Mark as queued
+        await supabase.from("campaign_leads").update({ status: "queued" }).eq("id", lead.id);
+
         try {
           const { data: leadData } = await supabase
             .from("prospect_list_items")
@@ -144,9 +133,7 @@ Deno.serve(async (req) => {
             .single();
 
           if (!leadData) {
-            await supabase.from("campaign_leads").update({
-              status: "failed", failed_at: new Date().toISOString(), error_message: "Lead not found",
-            }).eq("id", lead.id);
+            await markFailed(supabase, lead.id, campaign.id, "Lead não encontrado");
             campResult.failed++;
             continue;
           }
@@ -154,123 +141,195 @@ Deno.serve(async (req) => {
           let success = false;
           let errorMsg = "";
 
+          // ============ EMAIL ============
           if (campaign.channel === "email") {
             if (!leadData.email) {
               errorMsg = "Sem endereço de email";
-            } else if (!UNIPILE_BASE_URL || !UNIPILE_API_KEY) {
+            } else if (!UNIPILE_BASE_URL || !UNIPILE_API_KEY || !UNIPILE_ACCOUNT_ID) {
               errorMsg = "Provedor de email não configurado";
             } else {
               const message = (campaign.message_template || "").replace(/\{\{name\}\}/g, leadData.name || "");
-              const resp = await fetch(`${UNIPILE_BASE_URL}/api/v1/emails`, {
-                method: "POST",
-                headers: { "X-API-KEY": UNIPILE_API_KEY, "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  to: leadData.email,
-                  subject: campaign.subject || "Hello",
-                  body: message,
-                }),
-              });
-              if (resp.ok) {
-                success = true;
-              } else {
-                const errBody = await resp.text().catch(() => "");
-                errorMsg = `Email API error: ${resp.status} - ${errBody.slice(0, 200)}`;
+              try {
+                // Unipile: POST /api/v1/emails
+                const resp = await fetch(`${UNIPILE_BASE_URL}/api/v1/emails`, {
+                  method: "POST",
+                  headers: {
+                    "X-API-KEY": UNIPILE_API_KEY,
+                    "Content-Type": "application/json",
+                    "accept": "application/json",
+                  },
+                  body: JSON.stringify({
+                    account_id: UNIPILE_ACCOUNT_ID,
+                    to: [{ identifier: leadData.email, display_name: leadData.name || "" }],
+                    subject: campaign.subject || "Hello",
+                    body: message,
+                  }),
+                });
+                if (resp.ok) {
+                  success = true;
+                } else {
+                  const errBody = await resp.text().catch(() => "");
+                  errorMsg = `Email API error [${resp.status}]: ${errBody.slice(0, 200)}`;
+                  console.error("Email send error:", resp.status, errBody);
+                }
+              } catch (e) {
+                errorMsg = `Email request failed: ${e.message}`;
               }
             }
-          } else if (campaign.channel === "whatsapp") {
+          }
+
+          // ============ WHATSAPP ============
+          else if (campaign.channel === "whatsapp") {
             if (!leadData.phone) {
               errorMsg = "Sem número de telefone";
             } else if (!UNIPILE_BASE_URL || !UNIPILE_API_KEY || !waAccountId) {
               errorMsg = "WhatsApp não configurado";
             } else {
               const message = (campaign.message_template || "").replace(/\{\{name\}\}/g, leadData.name || "");
-              const resp = await fetch(`${UNIPILE_BASE_URL}/api/v1/messages`, {
-                method: "POST",
-                headers: { "X-API-KEY": UNIPILE_API_KEY, "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  attendee_provider_id: leadData.phone.replace(/\D/g, ""),
-                  text: message,
-                  account_id: waAccountId,
-                  provider: "WHATSAPP",
-                }),
-              });
-              if (resp.ok) {
-                success = true;
-              } else {
-                const errBody = await resp.text().catch(() => "");
-                errorMsg = `WhatsApp API error: ${resp.status} - ${errBody.slice(0, 200)}`;
-                console.error("WhatsApp send error:", resp.status, errBody);
-              }
-            }
-          } else if (campaign.channel === "linkedin") {
-            if (!leadData.linkedin_url) {
-              errorMsg = "Sem URL do LinkedIn";
-            } else if (!UNIPILE_BASE_URL || !UNIPILE_API_KEY) {
-              errorMsg = "LinkedIn não configurado";
-            } else {
-              const message = (campaign.message_template || "").replace(/\{\{name\}\}/g, leadData.name || "");
-              if (campaign.linkedin_type === "connection_request") {
-                const resp = await fetch(`${UNIPILE_BASE_URL}/api/v1/users/invite`, {
+              const cleanPhone = leadData.phone.replace(/\D/g, "");
+              try {
+                // Unipile: POST /api/v1/chats (start new chat) - uses multipart/form-data
+                const formData = new FormData();
+                formData.append("account_id", waAccountId);
+                formData.append("text", message);
+                formData.append("attendees_ids", cleanPhone);
+
+                const resp = await fetch(`${UNIPILE_BASE_URL}/api/v1/chats`, {
                   method: "POST",
-                  headers: { "X-API-KEY": UNIPILE_API_KEY, "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    provider_id: leadData.linkedin_url,
-                    account_id: UNIPILE_ACCOUNT_ID,
-                    message: message || undefined,
-                  }),
+                  headers: {
+                    "X-API-KEY": UNIPILE_API_KEY,
+                    "accept": "application/json",
+                  },
+                  body: formData,
                 });
-                if (resp.ok) { success = true; } else {
+                if (resp.ok) {
+                  success = true;
+                } else {
                   const errBody = await resp.text().catch(() => "");
-                  errorMsg = `LinkedIn invite error: ${resp.status} - ${errBody.slice(0, 200)}`;
+                  errorMsg = `WhatsApp API error [${resp.status}]: ${errBody.slice(0, 200)}`;
+                  console.error("WhatsApp send error:", resp.status, errBody);
                 }
-              } else {
-                const resp = await fetch(`${UNIPILE_BASE_URL}/api/v1/messages`, {
-                  method: "POST",
-                  headers: { "X-API-KEY": UNIPILE_API_KEY, "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    attendee_provider_id: leadData.linkedin_url,
-                    text: message,
-                    account_id: UNIPILE_ACCOUNT_ID,
-                    provider: "LINKEDIN",
-                  }),
-                });
-                if (resp.ok) { success = true; } else {
-                  const errBody = await resp.text().catch(() => "");
-                  errorMsg = `LinkedIn message error: ${resp.status} - ${errBody.slice(0, 200)}`;
-                }
+              } catch (e) {
+                errorMsg = `WhatsApp request failed: ${e.message}`;
               }
             }
           }
 
+          // ============ LINKEDIN ============
+          else if (campaign.channel === "linkedin") {
+            if (!leadData.linkedin_url) {
+              errorMsg = "Sem URL do LinkedIn";
+            } else if (!UNIPILE_BASE_URL || !UNIPILE_API_KEY || !UNIPILE_ACCOUNT_ID) {
+              errorMsg = "LinkedIn não configurado";
+            } else {
+              const message = (campaign.message_template || "").replace(/\{\{name\}\}/g, leadData.name || "");
+              const linkedinId = extractLinkedInId(leadData.linkedin_url);
+
+              try {
+                if (campaign.linkedin_type === "connection_request") {
+                  // Unipile: POST /api/v1/users/invite (JSON body)
+                  const body: Record<string, string> = {
+                    provider_id: linkedinId,
+                    account_id: UNIPILE_ACCOUNT_ID,
+                  };
+                  if (message) body.message = message;
+
+                  const resp = await fetch(`${UNIPILE_BASE_URL}/api/v1/users/invite`, {
+                    method: "POST",
+                    headers: {
+                      "X-API-KEY": UNIPILE_API_KEY,
+                      "Content-Type": "application/json",
+                      "accept": "application/json",
+                    },
+                    body: JSON.stringify(body),
+                  });
+                  if (resp.ok) {
+                    success = true;
+                  } else {
+                    const errBody = await resp.text().catch(() => "");
+                    errorMsg = `LinkedIn invite error [${resp.status}]: ${errBody.slice(0, 200)}`;
+                    console.error("LinkedIn invite error:", resp.status, errBody);
+                  }
+                } else if (campaign.linkedin_type === "inmail") {
+                  // Unipile: POST /api/v1/chats with linkedin[inmail]=true (multipart/form-data)
+                  const formData = new FormData();
+                  formData.append("account_id", UNIPILE_ACCOUNT_ID);
+                  formData.append("text", message);
+                  formData.append("attendees_ids", linkedinId);
+                  formData.append("linkedin[inmail]", "true");
+
+                  const resp = await fetch(`${UNIPILE_BASE_URL}/api/v1/chats`, {
+                    method: "POST",
+                    headers: {
+                      "X-API-KEY": UNIPILE_API_KEY,
+                      "accept": "application/json",
+                    },
+                    body: formData,
+                  });
+                  if (resp.ok) {
+                    success = true;
+                  } else {
+                    const errBody = await resp.text().catch(() => "");
+                    errorMsg = `LinkedIn InMail error [${resp.status}]: ${errBody.slice(0, 200)}`;
+                    console.error("LinkedIn InMail error:", resp.status, errBody);
+                  }
+                } else {
+                  // message to existing connection: POST /api/v1/chats (multipart/form-data)
+                  const formData = new FormData();
+                  formData.append("account_id", UNIPILE_ACCOUNT_ID);
+                  formData.append("text", message);
+                  formData.append("attendees_ids", linkedinId);
+
+                  const resp = await fetch(`${UNIPILE_BASE_URL}/api/v1/chats`, {
+                    method: "POST",
+                    headers: {
+                      "X-API-KEY": UNIPILE_API_KEY,
+                      "accept": "application/json",
+                    },
+                    body: formData,
+                  });
+                  if (resp.ok) {
+                    success = true;
+                  } else {
+                    const errBody = await resp.text().catch(() => "");
+                    errorMsg = `LinkedIn message error [${resp.status}]: ${errBody.slice(0, 200)}`;
+                    console.error("LinkedIn message error:", resp.status, errBody);
+                  }
+                }
+              } catch (e) {
+                errorMsg = `LinkedIn request failed: ${e.message}`;
+              }
+            }
+          }
+
+          // Update lead status and campaign counters atomically via RPC-like pattern
           if (success) {
             await supabase.from("campaign_leads").update({
-              status: "sent", sent_at: new Date().toISOString(),
+              status: "sent",
+              sent_at: new Date().toISOString(),
             }).eq("id", lead.id);
 
-            // Update campaign counters directly
+            // Increment counter using current DB value (avoids race conditions)
+            const { data: curr } = await supabase
+              .from("campaigns")
+              .select("total_sent")
+              .eq("id", campaign.id)
+              .single();
             await supabase.from("campaigns").update({
-              total_sent: (campaign.total_sent || 0) + campResult.sent + 1,
+              total_sent: (curr?.total_sent || 0) + 1,
             }).eq("id", campaign.id);
 
             campResult.sent++;
             totalProcessed++;
           } else {
-            await supabase.from("campaign_leads").update({
-              status: "failed", failed_at: new Date().toISOString(), error_message: errorMsg,
-            }).eq("id", lead.id);
-
-            await supabase.from("campaigns").update({
-              total_failed: (campaign.total_failed || 0) + campResult.failed + 1,
-            }).eq("id", campaign.id);
-
+            await markFailed(supabase, lead.id, campaign.id, errorMsg);
             campResult.failed++;
             campResult.errors.push(errorMsg);
           }
         } catch (err) {
-          await supabase.from("campaign_leads").update({
-            status: "failed", failed_at: new Date().toISOString(), error_message: err.message,
-          }).eq("id", lead.id);
+          await markFailed(supabase, lead.id, campaign.id, err.message);
           campResult.failed++;
+          campResult.errors.push(err.message);
         }
       }
 
@@ -283,7 +342,25 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error("process-campaign-queue error:", err);
     return new Response(JSON.stringify({ error: err.message }), {
-      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
+
+async function markFailed(supabase: any, leadId: string, campaignId: string, errorMsg: string) {
+  await supabase.from("campaign_leads").update({
+    status: "failed",
+    failed_at: new Date().toISOString(),
+    error_message: errorMsg,
+  }).eq("id", leadId);
+
+  const { data: curr } = await supabase
+    .from("campaigns")
+    .select("total_failed")
+    .eq("id", campaignId)
+    .single();
+  await supabase.from("campaigns").update({
+    total_failed: (curr?.total_failed || 0) + 1,
+  }).eq("id", campaignId);
+}

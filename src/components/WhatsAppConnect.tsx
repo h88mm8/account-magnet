@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { MessageCircle, Loader2, CheckCircle2, ExternalLink } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { MessageCircle, Loader2, CheckCircle2, ExternalLink, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,8 +22,33 @@ export function WhatsAppConnectModal({
   const { status, connecting, connect } = useWhatsAppConnection();
   const { toast } = useToast();
   const [authUrl, setAuthUrl] = useState<string | null>(null);
+  const [expired, setExpired] = useState(false);
+  const expiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Auto-expire after 10 minutes (matching Unipile link expiry)
+  useEffect(() => {
+    if (authUrl && status === "pending") {
+      setExpired(false);
+      if (expiryTimer.current) clearTimeout(expiryTimer.current);
+      expiryTimer.current = setTimeout(() => {
+        setExpired(true);
+      }, 10 * 60 * 1000); // 10 min
+    }
+    return () => {
+      if (expiryTimer.current) clearTimeout(expiryTimer.current);
+    };
+  }, [authUrl, status]);
+
+  // Reset state when connected
+  useEffect(() => {
+    if (status === "connected") {
+      setExpired(false);
+      setAuthUrl(null);
+    }
+  }, [status]);
 
   const handleConnect = async () => {
+    setExpired(false);
     const url = await connect();
     if (url) {
       setAuthUrl(url);
@@ -37,8 +62,25 @@ export function WhatsAppConnectModal({
     }
   };
 
+  const handleRetry = async () => {
+    // Generate a new QR code / auth link
+    setExpired(false);
+    setAuthUrl(null);
+    const url = await connect();
+    if (url) {
+      setAuthUrl(url);
+      window.open(url, "_blank", "width=500,height=700");
+    } else {
+      toast({
+        title: "Erro ao gerar novo QR Code",
+        description: "Tente novamente em alguns instantes.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const isConnected = status === "connected";
-  const isPending = status === "pending" || connecting;
+  const isPending = (status === "pending" || connecting) && !expired;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -64,6 +106,28 @@ export function WhatsAppConnectModal({
                 Você já pode enviar mensagens diretamente aos seus leads.
               </p>
             </div>
+          ) : expired ? (
+            <div className="flex flex-col items-center gap-3">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
+                <RefreshCw className="h-8 w-8 text-red-600" />
+              </div>
+              <p className="text-sm font-medium text-foreground">QR Code expirado</p>
+              <p className="text-xs text-muted-foreground text-center">
+                O tempo para escanear o QR Code expirou. Gere um novo para continuar.
+              </p>
+              <Button
+                onClick={handleRetry}
+                disabled={connecting}
+                className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+              >
+                {connecting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                Gerar novo QR Code
+              </Button>
+            </div>
           ) : isPending ? (
             <div className="flex flex-col items-center gap-3">
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-100">
@@ -73,17 +137,29 @@ export function WhatsAppConnectModal({
               <p className="text-xs text-muted-foreground text-center">
                 Escaneie o QR Code na janela que foi aberta para conectar seu WhatsApp.
               </p>
-              {authUrl && (
+              <div className="flex gap-2">
+                {authUrl && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 text-xs"
+                    onClick={() => window.open(authUrl, "_blank", "width=500,height=700")}
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Reabrir janela
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
                   className="gap-1.5 text-xs"
-                  onClick={() => window.open(authUrl, "_blank", "width=500,height=700")}
+                  onClick={handleRetry}
+                  disabled={connecting}
                 >
-                  <ExternalLink className="h-3 w-3" />
-                  Reabrir janela de conexão
+                  <RefreshCw className="h-3 w-3" />
+                  Novo QR Code
                 </Button>
-              )}
+              </div>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-3">
