@@ -1,86 +1,91 @@
 
 
-## Resolucao de URL Publica do LinkedIn via Unipile
+# Corrigir Campanhas LinkedIn: Resolucao de provider_id via Unipile
 
-### Problema
-Todos os leads vindos do Sales Navigator possuem URLs no formato `/sales/lead/ACwAAA...`, que o Apify nao consegue processar. Sem uma URL publica (`/in/username`), o Apify nunca e acionado e o Apollo e chamado indevidamente como unico caminho.
+## Problema Atual
 
-### Solucao
-Adicionar uma etapa de resolucao de URL na `enrich-lead` Edge Function que converte URLs do Sales Navigator em URLs publicas usando a API do Unipile (`GET /api/v1/users/{provider_id}`).
+As campanhas de LinkedIn falham com erro 400 porque o sistema envia um username parcial (ex: `john-doe`) ou um ID do Sales Navigator (ex: `ACwAAASNCJcBS2NERCgi0j...`) diretamente para a API do Unipile. A API exige um `provider_id` valido, que so pode ser obtido resolvendo o perfil do lead previamente.
 
-### Fluxo Atualizado
+## Solucao
 
-```text
-Sales Navigator URL (/sales/lead/ID)
-         |
-         v
-  Extrair provider_id da URL
-         |
-         v
-  Unipile GET /api/v1/users/{provider_id}
-         |
-         v
-  Extrair public_identifier da resposta
-         |
-         v
-  linkedin.com/in/{public_identifier}
-         |
-         v
-  Apify (async) --> webhook --> fallback Apollo
-```
+Adicionar uma etapa de resolucao de perfil antes de qualquer envio LinkedIn. O `provider_id` obtido sera salvo no lead para reutilizacao futura.
 
-### Detalhes Tecnicos
-
-**1. Modificar `supabase/functions/enrich-lead/index.ts`**
-
-- Adicionar funcao `resolvePublicLinkedInUrl(salesNavUrl, unipileApiKey, unipileBaseUrl, accountId)`:
-  - Extrai o ID do provider da URL do Sales Navigator (ex: `ACwAAASNCJcBS2NERCgi0j...`)
-  - Chama `GET {UNIPILE_BASE_URL}/api/v1/users/{provider_id}?account_id={UNIPILE_ACCOUNT_ID}`
-  - Extrai `public_identifier` da resposta
-  - Retorna `https://www.linkedin.com/in/{public_identifier}`
-  - Em caso de falha: retorna `null` (fallback para Apollo direto)
-
-- Modificar `toPublicLinkedInUrl` para se tornar async e chamar a resolucao quando detectar URL do Sales Navigator
-- Usar as secrets ja configuradas: `UNIPILE_API_KEY`, `UNIPILE_BASE_URL`, `UNIPILE_ACCOUNT_ID`
-
-**2. Fluxo de decisao atualizado no `enrich-lead`:**
+## Fluxo Corrigido
 
 ```text
-linkedinUrl do item
-    |
-    +-- ja e /in/username? --> usar direto --> Apify async
-    |
-    +-- e /sales/lead/ID? --> Unipile lookup --> obtem /in/username
-    |       |
-    |       +-- sucesso? --> Apify async
-    |       +-- falha? --> Apollo direto (se identificadores fortes)
-    |
-    +-- sem URL? --> Apollo direto (se identificadores fortes)
+Lead com linkedin_url
+       |
+       v
+  Ja tem provider_id salvo?
+       |
+  SIM -+-> Usar direto para invite/message/inmail
+       |
+  NAO -+-> Chamar Unipile GET /api/v1/users/{linkedin_identifier}
+              ?account_id=ACCOUNT_ID
+              |
+              +-- Sucesso: salvar provider_id no lead, prosseguir envio
+              +-- Falha: marcar lead como "invalid" (nao como falha de envio)
 ```
 
-**3. Nenhuma mudanca necessaria em:**
-- `webhooks-apify/index.ts` (ja processa resultados corretamente)
-- Banco de dados (campos ja existem)
-- Frontend (ja escuta Realtime)
+## Detalhes Tecnicos
 
-**4. Extracao do provider_id:**
-A URL do Sales Navigator segue o padrao:
-- `linkedin.com/sales/lead/ACwAAASNCJcBS2NERCgi0j_f7_oYqCSbTGsNYBc`
-- O ID apos `/lead/` e o provider_id que o Unipile aceita como identifier
+### 1. Migracao de banco de dados
 
-**5. Resposta esperada do Unipile:**
-```json
-{
-  "public_identifier": "luciano-bana",
-  "first_name": "Luciano",
-  "last_name": "Bana",
-  ...
-}
+Adicionar coluna `provider_id` na tabela `prospect_list_items`:
+
+```sql
+ALTER TABLE public.prospect_list_items
+  ADD COLUMN IF NOT EXISTS provider_id text;
 ```
 
-### Riscos e Mitigacoes
+Isso permite salvar o provider_id resolvido para reutilizacao em campanhas futuras, sem chamar a API novamente.
 
-- **Rate limit do Unipile**: A resolucao e feita 1 lead por vez (disparo manual), sem risco de burst
-- **Timeout**: Timeout de 8s na chamada Unipile; em caso de falha, fallback para Apollo
-- **ID invalido**: Se o Unipile nao encontrar o perfil, log + fallback para Apollo
+### 2. Modificacoes na Edge Function `process-campaign-queue/index.ts`
+
+**Nova funcao `resolveLinkedInProviderId`:**
+
+- Recebe: `linkedin_url`, `UNIPILE_BASE_URL`, `UNIPILE_API_KEY`, `UNIPILE_ACCOUNT_ID`
+- Extrai o identificador da URL (username de `/in/xxx` ou ID de `/sales/lead/xxx`)
+- Chama `GET {UNIPILE_BASE_URL}/api/v1/users/{identifier}?account_id={ACCOUNT_ID}`
+- Retorna o `provider_id` da resposta ou `null` em caso de falha
+- Timeout de 10 segundos
+
+**Modificacao no bloco LinkedIn (linhas 218-303):**
+
+- Antes de enviar qualquer acao (invite, inmail, message), verificar se o lead ja tem `provider_id` salvo
+- Se nao tem: chamar `resolveLinkedInProviderId`
+- Se resolucao falhar: marcar lead com status `"invalid"` e erro `"Perfil LinkedIn nao encontrado na resolucao"` (diferente de erro de envio)
+- Se resolucao suceder: salvar `provider_id` no `prospect_list_items` e usar para o envio
+- Usar o `provider_id` em todos os 3 tipos de campanha (connection_request, inmail, message)
+
+**Logging diferenciado:**
+
+- `console.log("[RESOLVE]")` para etapa de resolucao
+- `console.log("[SEND]")` para etapa de envio
+- `console.error("[RESOLVE_FAIL]")` e `console.error("[SEND_FAIL]")` para erros
+
+### 3. Ajuste na query de leads
+
+Alterar a query que busca dados do lead (linha 130-133) para incluir `provider_id`:
+
+```typescript
+.select("name, email, phone, linkedin_url, provider_id")
+```
+
+### 4. Nova funcao `markInvalid`
+
+Similar a `markFailed`, mas com status `"invalid"` para diferenciar leads cujo perfil nao pode ser resolvido de leads cujo envio falhou por erro da API.
+
+### 5. Nenhuma mudanca necessaria em
+
+- Frontend (Campaigns.tsx) -- ja exibe status e error_message
+- Webhooks (webhooks-linkedin) -- ja processa respostas corretamente
+- Outras Edge Functions
+
+## Resumo das Mudancas
+
+| Arquivo | Acao |
+|---|---|
+| Migracao SQL | Adicionar coluna `provider_id` em `prospect_list_items` |
+| `process-campaign-queue/index.ts` | Adicionar resolucao de perfil, salvar provider_id, diferenciar erros |
 
