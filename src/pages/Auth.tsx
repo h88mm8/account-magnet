@@ -85,8 +85,43 @@ export default function Auth() {
 
   return (
     <div className="min-h-screen" style={{ background: C.bg, color: C.text, fontFamily: "'DM Sans', sans-serif" }}>
+      {/* ═══ Header ═══ */}
+      <header
+        className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 md:px-10"
+        style={{ background: "rgba(11,11,15,0.85)", backdropFilter: "blur(12px)", borderBottom: `1px solid ${C.border}` }}
+      >
+        <span
+          className="text-base font-black uppercase tracking-[0.15em]"
+          style={{ fontFamily: "'Plus Jakarta Sans', monospace", color: C.accent }}
+        >
+          ELEV<span style={{ color: C.text }}>_</span>
+        </span>
+        <nav className="hidden md:flex items-center gap-8">
+          {[
+            { label: "Fluxo", ref: flowRef },
+            { label: "Acesso", ref: loginRef },
+          ].map((item) => (
+            <button
+              key={item.label}
+              onClick={() => scrollTo(item.ref)}
+              className="text-xs font-medium uppercase tracking-[0.2em] transition-colors hover:text-[#2DD4BF]"
+              style={{ color: C.textMuted }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+        <button
+          onClick={() => scrollTo(loginRef)}
+          className="px-5 py-2 text-[10px] font-bold uppercase tracking-[0.2em] transition-colors hover:bg-[#2DD4BF] hover:text-[#0B0B0F]"
+          style={{ border: `1px solid ${C.accent}`, color: C.accent }}
+        >
+          Falar com a ELEV
+        </button>
+      </header>
+
       {/* ═══ Hero ═══ */}
-      <section className="relative flex min-h-[92vh] flex-col items-center justify-center px-4 text-center overflow-hidden">
+      <section className="relative flex min-h-[92vh] flex-col items-center justify-center px-4 pt-16 text-center overflow-hidden">
         {/* Network-node texture (like Autonomy hero) */}
         <div className="pointer-events-none absolute inset-0" style={{
           backgroundImage: `radial-gradient(circle at 20% 30%, ${C.accentDim} 0%, transparent 50%),
@@ -337,6 +372,19 @@ export default function Auth() {
           <p className="mt-8 text-xs" style={{ color: C.textDim }}>contato@elevsales.com.br</p>
         </div>
       </section>
+
+      {/* ═══ Footer ═══ */}
+      <footer
+        className="flex flex-col md:flex-row items-center justify-between px-6 py-6 md:px-10 gap-3"
+        style={{ borderTop: `1px solid ${C.border}`, background: C.bg }}
+      >
+        <p className="text-[11px] tracking-wide" style={{ color: C.textDim, fontFamily: "monospace" }}>
+          © 2025 ELEV Sales. Todos os direitos reservados.
+        </p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.3em]" style={{ color: C.textDim }}>
+          Prospecção B2B integrada
+        </p>
+      </footer>
     </div>
   );
 }
