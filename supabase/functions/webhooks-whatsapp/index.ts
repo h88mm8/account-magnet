@@ -44,8 +44,10 @@ serve(async (req) => {
     const isConnected =
       event === "connected" ||
       event === "CONNECTED" ||
+      event === "CREATION_SUCCESS" ||
       event === "account.connected" ||
       payload?.status === "OK" ||
+      payload?.status === "CREATION_SUCCESS" ||
       payload?.status === "connected";
 
     const newStatus = isConnected ? "connected" : "disconnected";
