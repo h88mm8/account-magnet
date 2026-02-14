@@ -1,5 +1,6 @@
-import { Search, Building2, Users, BarChart3, Settings, HelpCircle, Compass, List, Send } from "lucide-react";
+import { Search, Building2, Users, BarChart3, Settings, HelpCircle, Compass, List, Send, LogOut } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Sidebar,
   SidebarContent,
@@ -27,6 +28,8 @@ const secondaryNav = [
 ];
 
 export function AppSidebar() {
+  const { signOut } = useAuth();
+
   return (
     <Sidebar className="border-r border-border">
       <div className="flex items-center gap-2.5 px-5 py-5">
@@ -82,6 +85,15 @@ export function AppSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
           ))}
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              onClick={signOut}
+              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive cursor-pointer"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>Sair</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
