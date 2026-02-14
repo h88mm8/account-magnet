@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User, Link2, Bell, CreditCard, MessageCircle } from "lucide-react";
+import { User, Link2, Bell, CreditCard, MessageCircle, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -95,8 +95,20 @@ const Settings = () => {
                 {waStatus === "connected" ? (
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="border-green-300 text-green-700">Conectado</Badge>
+                    <Button variant="ghost" size="sm" onClick={() => setShowWaModal(true)}
+                      className="gap-1 text-xs text-muted-foreground">
+                      <RefreshCw className="h-3 w-3" />
+                      Reconectar
+                    </Button>
                     <Button variant="ghost" size="sm" onClick={waDisconnect} className="text-xs text-muted-foreground">
                       Desconectar
+                    </Button>
+                  </div>
+                ) : waStatus === "pending" ? (
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="border-amber-300 text-amber-700">Pendente</Badge>
+                    <Button variant="outline" size="sm" onClick={() => setShowWaModal(true)}>
+                      Continuar conexão
                     </Button>
                   </div>
                 ) : (
