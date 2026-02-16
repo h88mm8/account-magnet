@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.webhooks-integration]
 verify_jwt = false
+
+[functions.apollo-search]
+verify_jwt = false

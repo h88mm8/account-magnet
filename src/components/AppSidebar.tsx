@@ -1,4 +1,4 @@
-import { Search, Building2, Users, BarChart3, Settings, HelpCircle, Compass, List, Send, LogOut } from "lucide-react";
+import { Search, Building2, Users, BarChart3, Settings, HelpCircle, Compass, List, Send, LogOut, Zap } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -18,6 +18,7 @@ const mainNav = [
   { title: "Empresas", url: "/companies", icon: Building2 },
   { title: "Contatos", url: "/contacts", icon: Users },
   { title: "Listas", url: "/lists", icon: List },
+  { title: "Busca Apollo", url: "/apollo-search", icon: Zap },
   { title: "Campanhas", url: "/campaigns", icon: Send },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
 ];
