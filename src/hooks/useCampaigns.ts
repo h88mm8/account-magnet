@@ -113,6 +113,18 @@ export async function checkWhatsAppConnection(userId: string): Promise<boolean> 
   return !!data;
 }
 
+/** Check if user has an active integration (LinkedIn or Email) */
+export async function checkIntegrationConnection(userId: string, provider: string): Promise<boolean> {
+  const { data } = await supabase
+    .from("user_integrations")
+    .select("status")
+    .eq("user_id", userId)
+    .eq("provider", provider)
+    .eq("status", "connected")
+    .single();
+  return !!data;
+}
+
 export function useActivateCampaign() {
   const queryClient = useQueryClient();
 

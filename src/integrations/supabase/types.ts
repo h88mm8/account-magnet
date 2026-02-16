@@ -206,6 +206,7 @@ export type Database = {
           name: string
           phone: string | null
           phone_checked_at: string | null
+          provider_id: string | null
           raw_data: Json | null
           title: string | null
           user_id: string
@@ -234,6 +235,7 @@ export type Database = {
           name: string
           phone?: string | null
           phone_checked_at?: string | null
+          provider_id?: string | null
           raw_data?: Json | null
           title?: string | null
           user_id: string
@@ -262,6 +264,7 @@ export type Database = {
           name?: string
           phone?: string | null
           phone_checked_at?: string | null
+          provider_id?: string | null
           raw_data?: Json | null
           title?: string | null
           user_id?: string
@@ -301,6 +304,42 @@ export type Database = {
           id?: string
           list_type?: string
           name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_integrations: {
+        Row: {
+          connected_at: string | null
+          created_at: string
+          id: string
+          provider: string
+          provider_email: string | null
+          status: string
+          unipile_account_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          connected_at?: string | null
+          created_at?: string
+          id?: string
+          provider: string
+          provider_email?: string | null
+          status?: string
+          unipile_account_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          connected_at?: string | null
+          created_at?: string
+          id?: string
+          provider?: string
+          provider_email?: string | null
+          status?: string
+          unipile_account_id?: string | null
           updated_at?: string
           user_id?: string
         }
