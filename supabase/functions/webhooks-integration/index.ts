@@ -20,11 +20,12 @@ Deno.serve(async (req) => {
     const body = await req.json();
     console.log("[WEBHOOK-INTEGRATION] Received:", JSON.stringify(body));
 
-    // Unipile sends account connection events
-    const event = body.event || body.type || "";
+    // Unipile webhook payloads can use different field names
+    const event = body.event || body.type || body.status || "";
     const data = body.data || body;
-    const accountId = data.account_id || data.id || body.account_id;
+    const accountId = data.account_id || body.account_id || data.id || "";
     const accountName = data.name || body.name || "";
+    const accountType = data.account_type || body.account_type || "";
 
     // Parse provider and user_id from name pattern: "provider-userId"
     let provider = "";
@@ -38,19 +39,30 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`[WEBHOOK-INTEGRATION] Event: ${event}, Provider: ${provider}, User: ${userId}, AccountId: ${accountId}`);
+    console.log(`[WEBHOOK-INTEGRATION] Event/Status: ${event}, Provider: ${provider}, User: ${userId}, AccountId: ${accountId}, AccountType: ${accountType}`);
 
     if (!provider || !userId) {
-      // Try to find by matching account_id in existing records
-      console.log("[WEBHOOK-INTEGRATION] Could not parse provider/user from name, checking existing records");
+      console.log("[WEBHOOK-INTEGRATION] Could not parse provider/user from name, skipping");
       return new Response(JSON.stringify({ ok: true, skipped: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    // Normalize event string for matching
+    const normalizedEvent = event.toUpperCase().replace(/[.\-_]/g, "");
+
     // Handle connection success
-    if (event === "account.created" || event === "account.connected" || event === "account_created" || event === "connected") {
-      await supabase
+    // Unipile sends: status="CREATION_SUCCESS", event="account.created", "account.connected", etc.
+    const isConnected = [
+      "CREATIONSUCCESS",
+      "ACCOUNTCREATED",
+      "ACCOUNTCONNECTED",
+      "ACCOUNTCREATED",
+      "CONNECTED",
+    ].includes(normalizedEvent);
+
+    if (isConnected) {
+      const { error } = await supabase
         .from("user_integrations")
         .upsert(
           {
@@ -64,11 +76,21 @@ Deno.serve(async (req) => {
           { onConflict: "user_id,provider" }
         );
 
-      console.log(`[WEBHOOK-INTEGRATION] ${provider} connected for user ${userId}`);
+      if (error) {
+        console.error(`[WEBHOOK-INTEGRATION] DB upsert error:`, error);
+      } else {
+        console.log(`[WEBHOOK-INTEGRATION] ✅ ${provider} connected for user ${userId}, account ${accountId}`);
+      }
     }
 
     // Handle disconnection
-    if (event === "account.disconnected" || event === "account_disconnected" || event === "disconnected") {
+    const isDisconnected = [
+      "ACCOUNTDISCONNECTED",
+      "ACCOUNTDISCONNECTED",
+      "DISCONNECTED",
+    ].includes(normalizedEvent);
+
+    if (isDisconnected) {
       await supabase
         .from("user_integrations")
         .update({
@@ -83,7 +105,12 @@ Deno.serve(async (req) => {
     }
 
     // Handle expired
-    if (event === "account.expired" || event === "expired") {
+    const isExpired = [
+      "ACCOUNTEXPIRED",
+      "EXPIRED",
+    ].includes(normalizedEvent);
+
+    if (isExpired) {
       await supabase
         .from("user_integrations")
         .update({
@@ -94,6 +121,26 @@ Deno.serve(async (req) => {
         .eq("provider", provider);
 
       console.log(`[WEBHOOK-INTEGRATION] ${provider} expired for user ${userId}`);
+    }
+
+    // Handle creation failure
+    const isFailed = [
+      "CREATIONFAILED",
+      "CREATIONFAILURE",
+      "ACCOUNTFAILED",
+    ].includes(normalizedEvent);
+
+    if (isFailed) {
+      await supabase
+        .from("user_integrations")
+        .update({
+          status: "disconnected",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", userId)
+        .eq("provider", provider);
+
+      console.log(`[WEBHOOK-INTEGRATION] ${provider} creation failed for user ${userId}`);
     }
 
     return new Response(JSON.stringify({ ok: true }), {

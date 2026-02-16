@@ -1,22 +1,45 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export type IntegrationStatus = "disconnected" | "pending" | "connected" | "expired";
 export type IntegrationProvider = "linkedin" | "email";
 
-interface Integration {
-  status: IntegrationStatus;
-  unipile_account_id: string | null;
-  provider_email: string | null;
-  connected_at: string | null;
-}
-
 export function useIntegration(provider: IntegrationProvider) {
   const { user } = useAuth();
   const [status, setStatus] = useState<IntegrationStatus>("disconnected");
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Stop polling helper
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
+
+  // Poll DB for status changes (fallback if realtime is slow)
+  const startPolling = useCallback(() => {
+    if (!user) return;
+    stopPolling();
+    pollRef.current = setInterval(async () => {
+      const { data } = await supabase
+        .from("user_integrations")
+        .select("status")
+        .eq("user_id", user.id)
+        .eq("provider", provider)
+        .single();
+
+      const newStatus = (data?.status as IntegrationStatus) || "disconnected";
+      if (newStatus === "connected" || newStatus === "expired") {
+        setStatus(newStatus);
+        setConnecting(false);
+        stopPolling();
+      }
+    }, 3000);
+  }, [user, provider, stopPolling]);
 
   useEffect(() => {
     if (!user) {
@@ -33,8 +56,14 @@ export function useIntegration(provider: IntegrationProvider) {
         .eq("provider", provider)
         .single();
 
-      setStatus((data?.status as IntegrationStatus) || "disconnected");
+      const s = (data?.status as IntegrationStatus) || "disconnected";
+      setStatus(s);
       setLoading(false);
+
+      // If pending, start polling in case webhook already fired
+      if (s === "pending") {
+        startPolling();
+      }
     };
 
     fetchStatus();
@@ -58,6 +87,7 @@ export function useIntegration(provider: IntegrationProvider) {
               setStatus(newStatus);
               if (newStatus === "connected") {
                 setConnecting(false);
+                stopPolling();
               }
             }
           }
@@ -67,8 +97,9 @@ export function useIntegration(provider: IntegrationProvider) {
 
     return () => {
       supabase.removeChannel(channel);
+      stopPolling();
     };
-  }, [user, provider]);
+  }, [user, provider, startPolling, stopPolling]);
 
   const connect = useCallback(async (): Promise<string | null> => {
     setConnecting(true);
@@ -84,13 +115,14 @@ export function useIntegration(provider: IntegrationProvider) {
       }
 
       setStatus("pending");
+      startPolling(); // Start polling immediately after connect
       return data?.url || null;
     } catch (err) {
       console.error(`${provider} connect error:`, err);
       setConnecting(false);
       return null;
     }
-  }, [provider]);
+  }, [provider, startPolling]);
 
   const disconnect = useCallback(async () => {
     try {
@@ -98,10 +130,11 @@ export function useIntegration(provider: IntegrationProvider) {
         body: { action: "disconnect", provider },
       });
       setStatus("disconnected");
+      stopPolling();
     } catch (err) {
       console.error(`${provider} disconnect error:`, err);
     }
-  }, [provider]);
+  }, [provider, stopPolling]);
 
   return { status, loading, connecting, connect, disconnect };
 }
