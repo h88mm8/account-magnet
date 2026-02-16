@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Play, Pause, Mail, MessageSquare, Linkedin, Send, Users, CheckCircle, XCircle, Eye, Reply, AlertTriangle } from "lucide-react";
+import { Plus, Play, Pause, Mail, MessageSquare, Linkedin, Send, Users, CheckCircle, XCircle, Eye, Reply, AlertTriangle, Trash2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useCampaigns, useCreateCampaign, useActivateCampaign, usePauseCampaign, useCampaignLeads, useAddLeadsToCampaign, checkWhatsAppConnection, checkIntegrationConnection, type Campaign } from "@/hooks/useCampaigns";
+import { useCampaigns, useCreateCampaign, useActivateCampaign, usePauseCampaign, useDeleteCampaign, useCampaignLeads, useAddLeadsToCampaign, checkWhatsAppConnection, checkIntegrationConnection, type Campaign } from "@/hooks/useCampaigns";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useProspectLists } from "@/hooks/useProspectLists";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWhatsAppConnection } from "@/hooks/useWhatsAppConnection";
@@ -56,10 +57,14 @@ const Campaigns = () => {
   const createCampaign = useCreateCampaign();
   const activateCampaign = useActivateCampaign();
   const pauseCampaign = usePauseCampaign();
+  const deleteCampaign = useDeleteCampaign();
   const addLeads = useAddLeadsToCampaign();
 
   const [showCreate, setShowCreate] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
+  const [campaignToDelete, setCampaignToDelete] = useState<Campaign | null>(null);
+
+
 
   const [name, setName] = useState("");
   const [channel, setChannel] = useState<string>("");
@@ -268,6 +273,14 @@ const Campaigns = () => {
                         <Pause className="mr-1 h-3 w-3" /> Pausar
                       </Button>
                     )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={(e) => { e.stopPropagation(); setCampaignToDelete(c); }}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -366,6 +379,39 @@ const Campaigns = () => {
       {selectedCampaign && (
         <CampaignDetail campaign={selectedCampaign} onClose={() => setSelectedCampaign(null)} />
       )}
+
+      <AlertDialog open={!!campaignToDelete} onOpenChange={(open) => !open && setCampaignToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover campanha</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja remover a campanha "{campaignToDelete?.name}"? Esta ação não pode ser desfeita e todos os leads vinculados serão removidos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (campaignToDelete) {
+                  deleteCampaign.mutate(campaignToDelete.id, {
+                    onSuccess: () => {
+                      toast({ title: "Campanha removida com sucesso" });
+                      setCampaignToDelete(null);
+                      if (selectedCampaign?.id === campaignToDelete.id) setSelectedCampaign(null);
+                    },
+                    onError: (e) => {
+                      toast({ title: "Erro ao remover", description: e.message, variant: "destructive" });
+                    },
+                  });
+                }
+              }}
+            >
+              Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

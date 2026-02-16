@@ -207,6 +207,24 @@ export function useCampaignMetrics() {
   });
 }
 
+export function useDeleteCampaign() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (campaignId: string) => {
+      // Delete campaign leads first
+      await supabase.from("campaign_leads").delete().eq("campaign_id", campaignId);
+      const { error } = await supabase.from("campaigns").delete().eq("id", campaignId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-metrics"] });
+      queryClient.invalidateQueries({ queryKey: ["real-metrics"] });
+    },
+  });
+}
+
 export function useAddLeadsToCampaign() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
