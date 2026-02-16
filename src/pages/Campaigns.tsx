@@ -10,10 +10,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useCampaigns, useCreateCampaign, useActivateCampaign, usePauseCampaign, useCampaignLeads, useAddLeadsToCampaign, checkWhatsAppConnection, type Campaign } from "@/hooks/useCampaigns";
+import { useCampaigns, useCreateCampaign, useActivateCampaign, usePauseCampaign, useCampaignLeads, useAddLeadsToCampaign, checkWhatsAppConnection, checkIntegrationConnection, type Campaign } from "@/hooks/useCampaigns";
 import { useProspectLists } from "@/hooks/useProspectLists";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWhatsAppConnection } from "@/hooks/useWhatsAppConnection";
+import { useIntegration } from "@/hooks/useIntegrations";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 
@@ -48,6 +49,8 @@ const Campaigns = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { status: waStatus } = useWhatsAppConnection();
+  const { status: linkedinStatus } = useIntegration("linkedin");
+  const { status: emailStatus } = useIntegration("email");
   const { data: campaigns, isLoading } = useCampaigns();
   const { lists } = useProspectLists();
   const createCampaign = useCreateCampaign();
@@ -120,13 +123,36 @@ const Campaigns = () => {
   };
 
   const handleActivate = async (campaign: Campaign) => {
-    // Pre-dispatch validation for WhatsApp
     if (campaign.channel === "whatsapp" && user) {
       const connected = await checkWhatsAppConnection(user.id);
       if (!connected) {
         toast({
           title: "WhatsApp não conectado",
           description: "Conecte seu WhatsApp nas Configurações antes de ativar a campanha.",
+          variant: "destructive",
+        });
+        navigate("/settings?tab=integrations");
+        return;
+      }
+    }
+    if (campaign.channel === "linkedin" && user) {
+      const connected = await checkIntegrationConnection(user.id, "linkedin");
+      if (!connected) {
+        toast({
+          title: "LinkedIn não conectado",
+          description: "Conecte sua conta pessoal do LinkedIn nas Configurações antes de ativar a campanha.",
+          variant: "destructive",
+        });
+        navigate("/settings?tab=integrations");
+        return;
+      }
+    }
+    if (campaign.channel === "email" && user) {
+      const connected = await checkIntegrationConnection(user.id, "email");
+      if (!connected) {
+        toast({
+          title: "Email não conectado",
+          description: "Conecte sua conta de email nas Configurações antes de ativar a campanha.",
           variant: "destructive",
         });
         navigate("/settings?tab=integrations");
@@ -151,16 +177,18 @@ const Campaigns = () => {
         </Button>
       </div>
 
-      {/* WhatsApp disconnected warning */}
-      {waStatus !== "connected" && (
-        <Card className="border border-amber-300 bg-amber-50 shadow-none dark:border-amber-700 dark:bg-amber-950/30">
+      {/* Disconnection warnings */}
+      {[
+        { show: waStatus !== "connected", label: "WhatsApp", desc: "Campanhas de WhatsApp não poderão ser disparadas sem uma conexão ativa." },
+        { show: linkedinStatus !== "connected", label: "LinkedIn", desc: "Conecte sua conta pessoal do LinkedIn para enviar convites e mensagens." },
+        { show: emailStatus !== "connected", label: "Email", desc: "Conecte sua conta de email para disparar campanhas de email." },
+      ].filter(w => w.show).map(w => (
+        <Card key={w.label} className="border border-amber-300 bg-amber-50 shadow-none dark:border-amber-700 dark:bg-amber-950/30">
           <CardContent className="flex items-center gap-3 p-4">
             <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
             <div className="flex-1">
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">WhatsApp desconectado</p>
-              <p className="text-xs text-amber-700 dark:text-amber-300">
-                Campanhas de WhatsApp não poderão ser disparadas sem uma conexão ativa.
-              </p>
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">{w.label} desconectado</p>
+              <p className="text-xs text-amber-700 dark:text-amber-300">{w.desc}</p>
             </div>
             <Button variant="outline" size="sm" onClick={() => navigate("/settings?tab=integrations")}
               className="border-amber-400 text-amber-700 hover:bg-amber-100">
@@ -168,7 +196,7 @@ const Campaigns = () => {
             </Button>
           </CardContent>
         </Card>
-      )}
+      ))}
 
       {/* Campaign list */}
       {isLoading ? (
@@ -375,6 +403,7 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
     replied: "bg-emerald-100 text-emerald-700",
     failed: "bg-destructive/10 text-destructive",
     accepted: "bg-violet-100 text-violet-700",
+    invalid: "bg-orange-100 text-orange-700",
   };
 
   const statusLabels: Record<string, string> = {
@@ -386,6 +415,7 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
     replied: "Respondido",
     failed: "Falha",
     accepted: "Aceito",
+    invalid: "Inválido",
   };
 
   return (

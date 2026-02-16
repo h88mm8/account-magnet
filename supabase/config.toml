@@ -23,3 +23,9 @@ verify_jwt = false
 
 [functions.webhooks-linkedin]
 verify_jwt = false
+
+[functions.connect-account]
+verify_jwt = false
+
+[functions.webhooks-integration]
+verify_jwt = false
