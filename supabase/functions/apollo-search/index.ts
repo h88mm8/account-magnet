@@ -26,7 +26,7 @@ serve(async (req) => {
     const {
       searchType = "people",
       page = 1,
-      per_page = 25,
+      per_page = 100,
       person_titles,
       person_locations,
       person_seniorities,
@@ -37,7 +37,7 @@ serve(async (req) => {
       q_organization_name,
     } = body;
 
-    // Apollo requires api_key in x-api-key header (not body)
+    // Always request 100 results (max allowed by Apollo)
     const apolloBody: Record<string, unknown> = {
       page,
       per_page: Math.min(per_page, 100),
@@ -92,6 +92,11 @@ serve(async (req) => {
         employeeCount: org.estimated_num_employees ? String(org.estimated_num_employees) : "",
         linkedinUrl: org.linkedin_url || "",
         website: org.website_url || org.primary_domain || "",
+        domain: org.primary_domain || "",
+        logoUrl: org.logo_url || org.logo_urls?.[0] || "",
+        foundedYear: org.founded_year ? String(org.founded_year) : "",
+        revenue: org.annual_revenue ? String(org.annual_revenue) : "",
+        phone: org.sanitized_phone || org.primary_phone?.sanitized_number || org.phone || "",
         apolloId: org.id || "",
       }));
 
@@ -111,6 +116,23 @@ serve(async (req) => {
       const people = data.people || data.contacts || [];
       const items = people.map((p: Record<string, unknown>) => {
         const org = p.organization as Record<string, unknown> | undefined;
+        // Extract email: Apollo may return it directly or in email_addresses array
+        const emailAddresses = p.email_addresses as Array<Record<string, unknown>> | undefined;
+        const primaryEmail =
+          (p.email as string) ||
+          (emailAddresses?.find((e) => e.type === "personal" || e.type === "work")?.email as string) ||
+          (emailAddresses?.[0]?.email as string) ||
+          "";
+
+        // Extract phone: Apollo may return sanitized_phone or phone_numbers array
+        const phoneNumbers = p.phone_numbers as Array<Record<string, unknown>> | undefined;
+        const primaryPhone =
+          (p.sanitized_phone as string) ||
+          (p.primary_phone as Record<string, unknown>)?.sanitized_number as string ||
+          (phoneNumbers?.find((ph) => ph.type === "work_hq" || ph.type === "personal")?.sanitized_number as string) ||
+          (phoneNumbers?.[0]?.sanitized_number as string) ||
+          "";
+
         return {
           firstName: p.first_name || "",
           lastName: p.last_name || "",
@@ -119,6 +141,8 @@ serve(async (req) => {
           location: [p.city, p.state, p.country].filter(Boolean).join(", "),
           linkedinUrl: p.linkedin_url || "",
           profilePictureUrl: p.photo_url || "",
+          email: primaryEmail,
+          phoneNumber: primaryPhone,
           apolloId: p.id || "",
         };
       });

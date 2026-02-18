@@ -24,6 +24,9 @@ export function LeadDrawer({ lead, open, onOpenChange, saved, onSave, showSaveBu
   const fullName = [lead.firstName, lead.lastName].filter(Boolean).join(" ") || "Desconhecido";
   const initials = [lead.firstName?.[0], lead.lastName?.[0]].filter(Boolean).join("").toUpperCase() || "?";
 
+  const hasEmail = !!lead.email;
+  const hasPhone = !!lead.phoneNumber;
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-md overflow-y-auto p-0">
@@ -123,15 +126,29 @@ export function LeadDrawer({ lead, open, onOpenChange, saved, onSave, showSaveBu
             <div className="space-y-3">
               <div className="flex items-start gap-3">
                 <Mail className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                <p className="text-sm font-medium text-foreground">
-                  {lead.email || "Não disponível"}
-                </p>
+                {hasEmail ? (
+                  <a
+                    href={`mailto:${lead.email}`}
+                    className="text-sm font-medium text-foreground hover:text-primary"
+                  >
+                    {lead.email}
+                  </a>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">Não disponível</p>
+                )}
               </div>
               <div className="flex items-start gap-3">
                 <Phone className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                <p className="text-sm font-medium text-foreground">
-                  {lead.phoneNumber || "Não disponível"}
-                </p>
+                {hasPhone ? (
+                  <a
+                    href={`tel:${lead.phoneNumber}`}
+                    className="text-sm font-medium text-foreground hover:text-primary"
+                  >
+                    {lead.phoneNumber}
+                  </a>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">Não disponível</p>
+                )}
               </div>
             </div>
           </div>
