@@ -1,7 +1,6 @@
-import { Building2, MapPin, Users, Factory, DollarSign, BookmarkPlus, Bookmark, ExternalLink } from "lucide-react";
+import { Building2, MapPin, Users, Factory, DollarSign, BookmarkPlus, Bookmark, ExternalLink, Globe, Phone, Calendar } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import type { AccountResult } from "@/lib/api/unipile";
 
@@ -28,12 +27,23 @@ export function AccountDrawer({ account, open, onOpenChange, saved, onSave, show
           <SheetTitle>{displayName}</SheetTitle>
         </SheetHeader>
 
-        {/* Top section – icon + identity */}
+        {/* Top section – logo + identity */}
         <div className="p-6 pb-4">
           <div className="flex items-start gap-4">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-              <Building2 className="h-7 w-7 text-primary" />
-            </div>
+            {account.logoUrl ? (
+              <img
+                src={account.logoUrl}
+                alt={displayName}
+                className="h-16 w-16 shrink-0 rounded-xl object-contain border border-border bg-background p-1"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                }}
+              />
+            ) : (
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                <Building2 className="h-7 w-7 text-primary" />
+              </div>
+            )}
             <div className="min-w-0 flex-1 space-y-1">
               <h2 className="text-lg font-bold text-foreground leading-tight truncate">{displayName}</h2>
               <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -44,6 +54,17 @@ export function AccountDrawer({ account, open, onOpenChange, saved, onSave, show
                 <MapPin className="h-3.5 w-3.5 shrink-0" />
                 <span className="truncate">{account.location || FALLBACK}</span>
               </div>
+              {account.website && (
+                <a
+                  href={account.website.startsWith("http") ? account.website : `https://${account.website}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-sm text-primary hover:underline truncate"
+                >
+                  <Globe className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{account.domain || account.website}</span>
+                </a>
+              )}
             </div>
           </div>
 
@@ -94,9 +115,20 @@ export function AccountDrawer({ account, open, onOpenChange, saved, onSave, show
                 <Users className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
                 <div>
                   <p className="text-xs text-muted-foreground">Funcionários</p>
-                  <p className="text-sm font-medium text-foreground">{account.employeeCount || FALLBACK}</p>
+                  <p className="text-sm font-medium text-foreground">
+                    {account.employeeCount ? Number(account.employeeCount).toLocaleString("pt-BR") : FALLBACK}
+                  </p>
                 </div>
               </div>
+              {account.foundedYear && (
+                <div className="flex items-start gap-3">
+                  <Calendar className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Fundação</p>
+                    <p className="text-sm font-medium text-foreground">{account.foundedYear}</p>
+                  </div>
+                </div>
+              )}
               {account.revenue && (
                 <div className="flex items-start gap-3">
                   <DollarSign className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
@@ -106,25 +138,54 @@ export function AccountDrawer({ account, open, onOpenChange, saved, onSave, show
                   </div>
                 </div>
               )}
+              {account.phone && (
+                <div className="flex items-start gap-3">
+                  <Phone className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Telefone</p>
+                    <a
+                      href={`tel:${account.phone}`}
+                      className="text-sm font-medium text-foreground hover:text-primary"
+                    >
+                      {account.phone}
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          {account.linkedinUrl && (
+          {(account.linkedinUrl || account.website) && (
             <>
               <Separator />
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
                   Links
                 </h3>
-                <a
-                  href={account.linkedinUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Ver perfil no LinkedIn
-                </a>
+                <div className="space-y-2">
+                  {account.linkedinUrl && (
+                    <a
+                      href={account.linkedinUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-sm text-primary hover:underline"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Ver perfil no LinkedIn
+                    </a>
+                  )}
+                  {account.website && (
+                    <a
+                      href={account.website.startsWith("http") ? account.website : `https://${account.website}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-sm text-primary hover:underline"
+                    >
+                      <Globe className="h-3.5 w-3.5" />
+                      Acessar website
+                    </a>
+                  )}
+                </div>
               </div>
             </>
           )}

@@ -16,11 +16,10 @@ import {
   apolloEmployeeRanges,
   type ApolloPersonFilters,
   type ApolloCompanyFilters,
-  type ApolloPagination,
 } from "@/lib/api/apollo";
 import type { LeadResult, AccountResult } from "@/lib/api/unipile";
 
-const PER_PAGE = 25;
+const PER_PAGE = 100;
 
 const ApolloSearch = () => {
   const { toast } = useToast();
@@ -34,7 +33,7 @@ const ApolloSearch = () => {
   const [pOrgLocations, setPOrgLocations] = useState("");
   const [pEmployees, setPEmployees] = useState("");
   const [pResults, setPResults] = useState<LeadResult[]>([]);
-  const [pPagination, setPPagination] = useState<ApolloPagination | null>(null);
+  const [pPagination, setPPagination] = useState<{ total_entries: number } | null>(null);
   const [pLoading, setPLoading] = useState(false);
   const [pSearched, setPSearched] = useState(false);
 
@@ -44,7 +43,7 @@ const ApolloSearch = () => {
   const [cLocations, setCLocations] = useState("");
   const [cEmployees, setCEmployees] = useState("");
   const [cResults, setCResults] = useState<AccountResult[]>([]);
-  const [cPagination, setCPagination] = useState<ApolloPagination | null>(null);
+  const [cPagination, setCPagination] = useState<{ total_entries: number } | null>(null);
   const [cLoading, setCLoading] = useState(false);
   const [cSearched, setCSearched] = useState(false);
 
@@ -105,19 +104,21 @@ const ApolloSearch = () => {
 
   const handleExportPeople = () => {
     if (!pResults.length) return;
-    const headers = ["Nome", "Cargo", "Empresa", "Localização", "LinkedIn"];
+    const headers = ["Nome", "Cargo", "Empresa", "Localização", "Email", "Telefone", "LinkedIn"];
     const rows = pResults.map((r) => [
       `${r.firstName || ""} ${r.lastName || ""}`.trim(),
-      r.title || "", r.company || "", r.location || "", r.linkedinUrl || "",
+      r.title || "", r.company || "", r.location || "",
+      r.email || "", r.phoneNumber || "", r.linkedinUrl || "",
     ]);
     downloadCsv([headers, ...rows], "apollo-contatos.csv");
   };
 
   const handleExportCompanies = () => {
     if (!cResults.length) return;
-    const headers = ["Empresa", "Setor", "Localização", "Funcionários", "LinkedIn"];
+    const headers = ["Empresa", "Setor", "Localização", "Funcionários", "Website", "Telefone", "LinkedIn"];
     const rows = cResults.map((r) => [
-      r.name || "", r.industry || "", r.location || "", r.employeeCount || "", r.linkedinUrl || "",
+      r.name || "", r.industry || "", r.location || "", r.employeeCount || "",
+      r.website || "", r.phone || "", r.linkedinUrl || "",
     ]);
     downloadCsv([headers, ...rows], "apollo-empresas.csv");
   };
@@ -272,32 +273,7 @@ const ApolloSearch = () => {
           </Card>
 
           {(pSearched || pResults.length > 0) && (
-            <>
-              <LeadResultsTable results={pResults} isLoading={pLoading} />
-              {pPagination && pPagination.total_pages > 1 && (
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">
-                    Página {pPagination.page} de {pPagination.total_pages} ({pPagination.total_entries.toLocaleString()} resultados)
-                  </p>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline" size="sm"
-                      disabled={pPagination.page <= 1 || pLoading}
-                      onClick={() => handlePeopleSearch(pPagination!.page - 1)}
-                    >
-                      Anterior
-                    </Button>
-                    <Button
-                      variant="outline" size="sm"
-                      disabled={pPagination.page >= pPagination.total_pages || pLoading}
-                      onClick={() => handlePeopleSearch(pPagination!.page + 1)}
-                    >
-                      Próxima
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </>
+            <LeadResultsTable results={pResults} isLoading={pLoading} />
           )}
         </TabsContent>
 
@@ -383,32 +359,7 @@ const ApolloSearch = () => {
           </Card>
 
           {(cSearched || cResults.length > 0) && (
-            <>
-              <ResultsTable results={cResults} isLoading={cLoading} />
-              {cPagination && cPagination.total_pages > 1 && (
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">
-                    Página {cPagination.page} de {cPagination.total_pages} ({cPagination.total_entries.toLocaleString()} resultados)
-                  </p>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline" size="sm"
-                      disabled={cPagination.page <= 1 || cLoading}
-                      onClick={() => handleCompanySearch(cPagination!.page - 1)}
-                    >
-                      Anterior
-                    </Button>
-                    <Button
-                      variant="outline" size="sm"
-                      disabled={cPagination.page >= cPagination.total_pages || cLoading}
-                      onClick={() => handleCompanySearch(cPagination!.page + 1)}
-                    >
-                      Próxima
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </>
+            <ResultsTable results={cResults} isLoading={cLoading} />
           )}
         </TabsContent>
       </Tabs>

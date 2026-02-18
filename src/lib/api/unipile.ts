@@ -21,6 +21,12 @@ export type AccountResult = {
   employeeCount: string;
   linkedinUrl: string;
   revenue?: string;
+  website?: string;
+  domain?: string;
+  logoUrl?: string;
+  foundedYear?: string;
+  phone?: string;
+  apolloId?: string;
 };
 
 // ── Lead types ───────────────────────────────────────────────────────
@@ -48,6 +54,7 @@ export type LeadResult = {
   profilePictureUrl?: string;
   email?: string;
   phoneNumber?: string;
+  apolloId?: string;
 };
 
 // ── Pagination ───────────────────────────────────────────────────────
