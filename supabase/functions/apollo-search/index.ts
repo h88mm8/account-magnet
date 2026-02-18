@@ -8,6 +8,73 @@ const corsHeaders = {
 
 const APOLLO_BASE = "https://api.apollo.io/api/v1";
 
+/** Resolve email from all possible Apollo payload locations */
+function resolveEmail(p: Record<string, unknown>): string {
+  // 1. Direct email field
+  if (p.email && typeof p.email === "string" && p.email.includes("@")) return p.email;
+
+  // 2. email_addresses array (object with .email property)
+  const emailAddresses = p.email_addresses as Array<Record<string, unknown>> | undefined;
+  if (Array.isArray(emailAddresses) && emailAddresses.length > 0) {
+    // Prefer work/personal type first
+    const preferred = emailAddresses.find(
+      (e) => e.type === "personal" || e.type === "work" || e.type === "professional"
+    );
+    const candidate = preferred || emailAddresses[0];
+    const val = (candidate?.email || candidate?.value || candidate?.address) as string | undefined;
+    if (val && val.includes("@")) return val;
+  }
+
+  // 3. emails array (plain strings)
+  const emails = p.emails as unknown[] | undefined;
+  if (Array.isArray(emails) && emails.length > 0) {
+    const first = emails[0];
+    if (typeof first === "string" && first.includes("@")) return first;
+    if (typeof first === "object" && first !== null) {
+      const val = ((first as Record<string, unknown>).email || (first as Record<string, unknown>).value) as string | undefined;
+      if (val && val.includes("@")) return val;
+    }
+  }
+
+  return "";
+}
+
+/** Resolve phone from all possible Apollo payload locations */
+function resolvePhone(p: Record<string, unknown>): string {
+  // 1. primary_phone object – Apollo v1 most common
+  const primaryPhone = p.primary_phone as Record<string, unknown> | undefined;
+  if (primaryPhone) {
+    const num =
+      (primaryPhone.sanitized_number as string) ||
+      (primaryPhone.number as string) ||
+      (primaryPhone.raw_number as string);
+    if (num) return num;
+  }
+
+  // 2. sanitized_phone direct field
+  if (p.sanitized_phone && typeof p.sanitized_phone === "string") return p.sanitized_phone as string;
+
+  // 3. phone direct field
+  if (p.phone && typeof p.phone === "string") return p.phone as string;
+
+  // 4. phone_numbers array
+  const phoneNumbers = p.phone_numbers as Array<Record<string, unknown>> | undefined;
+  if (Array.isArray(phoneNumbers) && phoneNumbers.length > 0) {
+    // Prefer mobile/personal type
+    const preferred = phoneNumbers.find(
+      (ph) => ph.type === "mobile" || ph.type === "personal" || ph.type === "work_hq"
+    );
+    const candidate = preferred || phoneNumbers[0];
+    const num =
+      (candidate?.sanitized_number as string) ||
+      (candidate?.number as string) ||
+      (candidate?.raw_number as string);
+    if (num) return num;
+  }
+
+  return "";
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -37,7 +104,7 @@ serve(async (req) => {
       q_organization_name,
     } = body;
 
-    // Always request 100 results (max allowed by Apollo)
+    // Always cap at 100 results (Apollo max)
     const apolloBody: Record<string, unknown> = {
       page,
       per_page: Math.min(per_page, 100),
@@ -61,7 +128,7 @@ serve(async (req) => {
       if (organization_num_employees_ranges?.length) apolloBody.organization_num_employees_ranges = organization_num_employees_ranges;
     }
 
-    console.log("Apollo search:", url, JSON.stringify(Object.keys(apolloBody)));
+    console.log(`[apollo-search] type=${searchType} page=${page} per_page=${apolloBody.per_page}`);
 
     const response = await fetch(url, {
       method: "POST",
@@ -76,74 +143,48 @@ serve(async (req) => {
     const data = await response.json();
 
     if (!response.ok) {
-      console.error("Apollo API error:", response.status, JSON.stringify(data));
+      console.error("[apollo-search] API error:", response.status, JSON.stringify(data));
       return new Response(
-        JSON.stringify({ error: data.message || `Apollo API error: ${response.status}`, items: [], pagination: { page: 1, total_pages: 0, total_entries: 0 } }),
+        JSON.stringify({
+          error: data.message || `Apollo API error: ${response.status}`,
+          items: [],
+          pagination: { page: 1, total_pages: 0, total_entries: 0 },
+        }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     if (searchType === "companies") {
       const organizations = data.organizations || data.accounts || [];
-      const items = organizations.map((org: Record<string, unknown>) => ({
-        name: org.name || "",
-        industry: org.industry || "",
-        location: [org.city, org.state, org.country].filter(Boolean).join(", "),
-        employeeCount: org.estimated_num_employees ? String(org.estimated_num_employees) : "",
-        linkedinUrl: org.linkedin_url || "",
-        website: org.website_url || org.primary_domain || "",
-        domain: org.primary_domain || "",
-        logoUrl: org.logo_url || org.logo_urls?.[0] || "",
-        foundedYear: org.founded_year ? String(org.founded_year) : "",
-        revenue: org.annual_revenue ? String(org.annual_revenue) : "",
-        phone: org.sanitized_phone || org.primary_phone?.sanitized_number || org.phone || "",
-        apolloId: org.id || "",
-      }));
 
-      return new Response(
-        JSON.stringify({
-          items,
-          pagination: {
-            page: data.pagination?.page || page,
-            total_pages: data.pagination?.total_pages || 0,
-            total_entries: data.pagination?.total_entries || 0,
-            per_page: data.pagination?.per_page || per_page,
-          },
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    } else {
-      const people = data.people || data.contacts || [];
-      const items = people.map((p: Record<string, unknown>) => {
-        const org = p.organization as Record<string, unknown> | undefined;
-        // Extract email: Apollo may return it directly or in email_addresses array
-        const emailAddresses = p.email_addresses as Array<Record<string, unknown>> | undefined;
-        const primaryEmail =
-          (p.email as string) ||
-          (emailAddresses?.find((e) => e.type === "personal" || e.type === "work")?.email as string) ||
-          (emailAddresses?.[0]?.email as string) ||
-          "";
+      // Log first record raw to inspect available fields
+      if (organizations.length > 0) {
+        const sample = organizations[0] as Record<string, unknown>;
+        console.log("[apollo-search] company sample keys:", Object.keys(sample).join(", "));
+      }
 
-        // Extract phone: Apollo may return sanitized_phone or phone_numbers array
-        const phoneNumbers = p.phone_numbers as Array<Record<string, unknown>> | undefined;
-        const primaryPhone =
-          (p.sanitized_phone as string) ||
-          (p.primary_phone as Record<string, unknown>)?.sanitized_number as string ||
-          (phoneNumbers?.find((ph) => ph.type === "work_hq" || ph.type === "personal")?.sanitized_number as string) ||
-          (phoneNumbers?.[0]?.sanitized_number as string) ||
+      const items = organizations.map((org: Record<string, unknown>) => {
+        // Phone for companies
+        const orgPhone =
+          (org.sanitized_phone as string) ||
+          (org.phone as string) ||
+          ((org.primary_phone as Record<string, unknown>)?.sanitized_number as string) ||
+          ((org.primary_phone as Record<string, unknown>)?.number as string) ||
           "";
 
         return {
-          firstName: p.first_name || "",
-          lastName: p.last_name || "",
-          title: p.title || p.headline || "",
-          company: (org?.name as string) || p.organization_name || "",
-          location: [p.city, p.state, p.country].filter(Boolean).join(", "),
-          linkedinUrl: p.linkedin_url || "",
-          profilePictureUrl: p.photo_url || "",
-          email: primaryEmail,
-          phoneNumber: primaryPhone,
-          apolloId: p.id || "",
+          name: (org.name as string) || "",
+          industry: (org.industry as string) || "",
+          location: [org.city, org.state, org.country].filter(Boolean).join(", "),
+          employeeCount: org.estimated_num_employees ? String(org.estimated_num_employees) : "",
+          linkedinUrl: (org.linkedin_url as string) || "",
+          website: (org.website_url as string) || (org.primary_domain as string) || "",
+          domain: (org.primary_domain as string) || "",
+          logoUrl: (org.logo_url as string) || "",
+          foundedYear: org.founded_year ? String(org.founded_year) : "",
+          revenue: org.annual_revenue ? String(org.annual_revenue) : "",
+          phone: orgPhone,
+          apolloId: (org.id as string) || "",
         };
       });
 
@@ -159,11 +200,66 @@ serve(async (req) => {
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    } else {
+      const people = data.people || data.contacts || [];
+
+      // Log first record raw to inspect available fields
+      if (people.length > 0) {
+        const sample = people[0] as Record<string, unknown>;
+        console.log("[apollo-search] person sample keys:", Object.keys(sample).join(", "));
+        console.log("[apollo-search] person email fields:", JSON.stringify({
+          email: sample.email,
+          emails: sample.emails,
+          email_addresses: sample.email_addresses,
+          sanitized_phone: sample.sanitized_phone,
+          primary_phone: sample.primary_phone,
+          phone_numbers: sample.phone_numbers,
+          phone: sample.phone,
+        }));
+      }
+
+      const items = people.map((p: Record<string, unknown>) => {
+        const org = p.organization as Record<string, unknown> | undefined;
+        const email = resolveEmail(p);
+        const phoneNumber = resolvePhone(p);
+
+        return {
+          firstName: (p.first_name as string) || "",
+          lastName: (p.last_name as string) || "",
+          title: (p.title as string) || (p.headline as string) || "",
+          company: (org?.name as string) || (p.organization_name as string) || "",
+          location: [p.city, p.state, p.country].filter(Boolean).join(", "),
+          linkedinUrl: (p.linkedin_url as string) || "",
+          profilePictureUrl: (p.photo_url as string) || "",
+          email,
+          phoneNumber,
+          apolloId: (p.id as string) || "",
+        };
+      });
+
+      console.log(`[apollo-search] mapped ${items.length} people. email coverage: ${items.filter((i: { email: string }) => i.email).length}/${items.length}`);
+
+      return new Response(
+        JSON.stringify({
+          items,
+          pagination: {
+            page: data.pagination?.page || page,
+            total_pages: data.pagination?.total_pages || 0,
+            total_entries: data.pagination?.total_entries || 0,
+            per_page: data.pagination?.per_page || per_page,
+          },
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
   } catch (err) {
-    console.error("apollo-search error:", err);
+    console.error("[apollo-search] unhandled error:", err);
     return new Response(
-      JSON.stringify({ error: err.message || "Internal error", items: [], pagination: { page: 1, total_pages: 0, total_entries: 0 } }),
+      JSON.stringify({
+        error: (err as Error).message || "Internal error",
+        items: [],
+        pagination: { page: 1, total_pages: 0, total_entries: 0 },
+      }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
