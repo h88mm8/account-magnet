@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Building2, Users, TrendingUp, Target, Download, Send, Reply, Mail } from "lucide-react";
+import { Building2, Users, TrendingUp, Target, Download, Send, Reply, Mail, MousePointerClick } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,7 +20,13 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { useRealMetrics, useMonthlyChartData, useIndustryChartData } from "@/hooks/useRealMetrics";
+import {
+  useRealMetrics,
+  useMonthlyChartData,
+  useIndustryChartData,
+  useClicksChartData,
+  useTopLeadsByClicks,
+} from "@/hooks/useRealMetrics";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const Analytics = () => {
@@ -28,6 +34,8 @@ const Analytics = () => {
   const { data: metrics, isLoading: metricsLoading } = useRealMetrics();
   const { data: monthlyData, isLoading: monthlyLoading } = useMonthlyChartData();
   const { data: industryData, isLoading: industryLoading } = useIndustryChartData();
+  const { data: clicksData, isLoading: clicksLoading } = useClicksChartData(period);
+  const { data: topLeads, isLoading: topLeadsLoading } = useTopLeadsByClicks();
 
   const kpis = [
     { label: "Empresas salvas", value: metrics?.companiesSaved ?? 0, icon: Building2 },
@@ -37,6 +45,7 @@ const Analytics = () => {
     { label: "Campanhas ativas", value: metrics?.activeCampaigns ?? 0, icon: Mail },
     { label: "Total enviados", value: metrics?.totalSent ?? 0, icon: Send },
     { label: "Total respondidos", value: metrics?.totalReplied ?? 0, icon: Reply },
+    { label: "Cliques únicos", value: metrics?.totalLinkClicks ?? 0, icon: MousePointerClick },
   ];
 
   return (
@@ -68,7 +77,7 @@ const Analytics = () => {
       </div>
 
       {/* KPIs */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
         {kpis.map((kpi) => (
           <Card key={kpi.label} className="border border-border shadow-none">
             <CardContent className="p-5">
@@ -90,7 +99,94 @@ const Analytics = () => {
         ))}
       </div>
 
-      {/* Charts */}
+      {/* Link Clicks Chart + Top Leads */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Clicks over time */}
+        <Card className="border border-border shadow-none lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="font-display text-base font-semibold flex items-center gap-2">
+              <MousePointerClick className="h-4 w-4 text-primary" />
+              Cliques em links por período
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {clicksLoading ? (
+              <Skeleton className="h-[240px] w-full" />
+            ) : clicksData && clicksData.length > 0 && clicksData.some((d) => d.cliques > 0) ? (
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={clicksData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis
+                    dataKey="date"
+                    className="text-xs"
+                    tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    className="text-xs"
+                    tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--card))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "var(--radius)",
+                      color: "hsl(var(--foreground))",
+                    }}
+                    formatter={(v: number) => [v, "Cliques únicos"]}
+                  />
+                  <Bar dataKey="cliques" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">
+                Nenhum clique registrado no período. Envie mensagens com links via WhatsApp para ver dados aqui.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Top leads by clicks */}
+        <Card className="border border-border shadow-none">
+          <CardHeader>
+            <CardTitle className="font-display text-base font-semibold">
+              Leads mais engajados
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {topLeadsLoading ? (
+              <Skeleton className="h-[240px] w-full" />
+            ) : topLeads && topLeads.length > 0 ? (
+              <div className="space-y-3">
+                {topLeads.map((lead, i) => (
+                  <div key={lead.lead_id} className="flex items-center gap-3">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                      {i + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-foreground">{lead.name}</p>
+                      {lead.company && (
+                        <p className="truncate text-xs text-muted-foreground">{lead.company}</p>
+                      )}
+                    </div>
+                    <span className="flex items-center gap-1 text-sm font-semibold text-primary">
+                      <MousePointerClick className="h-3 w-3" />
+                      {lead.link_clicks_count}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground text-center px-4">
+                Nenhum lead clicou em links ainda.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Existing Charts */}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="border border-border shadow-none">
           <CardHeader>
