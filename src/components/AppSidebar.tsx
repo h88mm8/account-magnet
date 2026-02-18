@@ -1,4 +1,4 @@
-import { Search, Building2, Users, BarChart3, Settings, HelpCircle, Compass, List, Send, LogOut } from "lucide-react";
+import { Search, BarChart3, Settings, HelpCircle, List, Send, LogOut } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -14,9 +14,7 @@ import {
 } from "@/components/ui/sidebar";
 
 const mainNav = [
-  { title: "Discover", url: "/", icon: Compass },
-  { title: "Empresas", url: "/companies", icon: Building2 },
-  { title: "Contatos", url: "/contacts", icon: Users },
+  { title: "Buscar", url: "/search", icon: Search },
   { title: "Listas", url: "/lists", icon: List },
   { title: "Campanhas", url: "/campaigns", icon: Send },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },

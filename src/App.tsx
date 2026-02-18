@@ -15,7 +15,7 @@ import Settings from "./pages/Settings";
 import Help from "./pages/Help";
 import Lists from "./pages/Lists";
 import Campaigns from "./pages/Campaigns";
-
+import ApolloSearch from "./pages/ApolloSearch";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -42,11 +42,11 @@ function ProtectedLayout() {
           <TopBar />
           <main className="flex-1 overflow-auto bg-background">
             <Routes>
-              <Route path="/" element={<Index />} />
+              <Route path="/" element={<Navigate to="/search" replace />} />
+              <Route path="/search" element={<ApolloSearch />} />
               <Route path="/companies" element={<Companies />} />
               <Route path="/contacts" element={<Contacts />} />
               <Route path="/lists" element={<Lists />} />
-              
               <Route path="/campaigns" element={<Campaigns />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/settings" element={<Settings />} />
