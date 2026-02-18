@@ -6,11 +6,64 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-/**
- * Extract LinkedIn public identifier from a URL like
- * https://www.linkedin.com/in/john-doe or /in/john-doe-123abc
- * Also handles Sales Navigator URLs /sales/lead/ACwAAA...
- */
+// ──────────────────────────────────────────────
+// URL Tracking helpers
+// ──────────────────────────────────────────────
+function generateShortCode(): string {
+  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let code = "";
+  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+async function wrapUrlsInMessage(
+  supabase: ReturnType<typeof createClient>,
+  message: string,
+  userId: string,
+  leadId: string,
+  campaignLeadId: string,
+  supabaseProjectId: string
+): Promise<string> {
+  const URL_REGEX = /(https?:\/\/[^\s]+)/gi;
+  const urls = message.match(URL_REGEX);
+  if (!urls || urls.length === 0) return message;
+
+  let result = message;
+  for (const originalUrl of urls) {
+    // Generate unique short code with collision retry
+    let shortCode = generateShortCode();
+    let attempts = 0;
+    while (attempts < 5) {
+      const { count } = await supabase
+        .from("link_tracking")
+        .select("id", { count: "exact", head: true })
+        .eq("short_code", shortCode);
+      if ((count ?? 0) === 0) break;
+      shortCode = generateShortCode();
+      attempts++;
+    }
+
+    const { error } = await supabase.from("link_tracking").insert({
+      user_id: userId,
+      lead_id: leadId,
+      campaign_lead_id: campaignLeadId,
+      original_url: originalUrl,
+      short_code: shortCode,
+    });
+
+    if (error) {
+      console.error(`[TRACKING] Failed to insert tracking for ${originalUrl}:`, error.message);
+      continue; // keep original URL if tracking insert fails
+    }
+
+    const trackingUrl = `https://${supabaseProjectId}.supabase.co/functions/v1/redirect-link/r/${shortCode}`;
+    result = result.replace(originalUrl, trackingUrl);
+    console.log(`[TRACKING] Wrapped URL: ${originalUrl} -> ${trackingUrl}`);
+  }
+  return result;
+}
+
+
 function extractLinkedInId(url: string): string {
   if (!url.includes("/")) return url;
   // Sales Navigator lead ID
@@ -77,6 +130,7 @@ Deno.serve(async (req) => {
   const UNIPILE_BASE_URL = Deno.env.get("UNIPILE_BASE_URL");
   const UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY");
   const UNIPILE_ACCOUNT_ID = Deno.env.get("UNIPILE_ACCOUNT_ID"); // fallback for search, not campaigns
+  const SUPABASE_PROJECT_ID = Deno.env.get("SUPABASE_URL")?.match(/https:\/\/([^.]+)\./)?.[1] ?? "";
 
   try {
     let campaignFilter: string | null = null;
@@ -261,8 +315,21 @@ Deno.serve(async (req) => {
             } else if (!UNIPILE_BASE_URL || !UNIPILE_API_KEY || !channelAccountId) {
               errorMsg = "WhatsApp não configurado";
             } else {
-              const message = (campaign.message_template || "").replace(/\{\{name\}\}/g, leadData.name || "");
+              let message = (campaign.message_template || "").replace(/\{\{name\}\}/g, leadData.name || "");
               const cleanPhone = leadData.phone.replace(/\D/g, "");
+
+              // Wrap URLs for tracking (only when we have user + lead context)
+              if (SUPABASE_PROJECT_ID && campaign.user_id && lead.lead_id) {
+                message = await wrapUrlsInMessage(
+                  supabase,
+                  message,
+                  campaign.user_id,
+                  lead.lead_id,
+                  lead.id,
+                  SUPABASE_PROJECT_ID
+                );
+              }
+
               try {
                 console.log(`[SEND] WhatsApp to ${cleanPhone} via account ${channelAccountId}`);
                 const formData = new FormData();

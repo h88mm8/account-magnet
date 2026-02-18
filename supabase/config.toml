@@ -32,3 +32,9 @@ verify_jwt = false
 
 [functions.apollo-search]
 verify_jwt = false
+
+[functions.redirect-link]
+verify_jwt = false
+
+[functions.send-click-notification]
+verify_jwt = false
