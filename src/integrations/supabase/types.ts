@@ -154,12 +154,121 @@ export type Database = {
           },
         ]
       }
+      link_clicks: {
+        Row: {
+          clicked_at: string
+          id: string
+          ip_address: string | null
+          is_unique: boolean
+          lead_id: string
+          tracking_id: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          clicked_at?: string
+          id?: string
+          ip_address?: string | null
+          is_unique?: boolean
+          lead_id: string
+          tracking_id: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          clicked_at?: string
+          id?: string
+          ip_address?: string | null
+          is_unique?: boolean
+          lead_id?: string
+          tracking_id?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "link_clicks_tracking_id_fkey"
+            columns: ["tracking_id"]
+            isOneToOne: false
+            referencedRelation: "link_tracking"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      link_tracking: {
+        Row: {
+          campaign_lead_id: string | null
+          created_at: string
+          id: string
+          lead_id: string
+          original_url: string
+          short_code: string
+          user_id: string
+        }
+        Insert: {
+          campaign_lead_id?: string | null
+          created_at?: string
+          id?: string
+          lead_id: string
+          original_url: string
+          short_code: string
+          user_id: string
+        }
+        Update: {
+          campaign_lead_id?: string | null
+          created_at?: string
+          id?: string
+          lead_id?: string
+          original_url?: string
+          short_code?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          body: string | null
+          created_at: string
+          data: Json | null
+          id: string
+          read: boolean
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          data?: Json | null
+          id?: string
+          read?: boolean
+          title: string
+          type?: string
+          user_id: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          data?: Json | null
+          id?: string
+          read?: boolean
+          title?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
           created_at: string
           full_name: string | null
           id: string
+          notify_email: string | null
+          notify_email_enabled: boolean
+          notify_inapp_enabled: boolean
+          notify_whatsapp_enabled: boolean
+          notify_whatsapp_number: string | null
           updated_at: string
           user_id: string
         }
@@ -168,6 +277,11 @@ export type Database = {
           created_at?: string
           full_name?: string | null
           id?: string
+          notify_email?: string | null
+          notify_email_enabled?: boolean
+          notify_inapp_enabled?: boolean
+          notify_whatsapp_enabled?: boolean
+          notify_whatsapp_number?: string | null
           updated_at?: string
           user_id: string
         }
@@ -176,6 +290,11 @@ export type Database = {
           created_at?: string
           full_name?: string | null
           id?: string
+          notify_email?: string | null
+          notify_email_enabled?: boolean
+          notify_inapp_enabled?: boolean
+          notify_whatsapp_enabled?: boolean
+          notify_whatsapp_number?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -200,6 +319,7 @@ export type Database = {
           id: string
           industry: string | null
           item_type: string
+          link_clicks_count: number
           linkedin_url: string | null
           list_id: string
           location: string | null
@@ -229,6 +349,7 @@ export type Database = {
           id?: string
           industry?: string | null
           item_type: string
+          link_clicks_count?: number
           linkedin_url?: string | null
           list_id: string
           location?: string | null
@@ -258,6 +379,7 @@ export type Database = {
           id?: string
           industry?: string | null
           item_type?: string
+          link_clicks_count?: number
           linkedin_url?: string | null
           list_id?: string
           location?: string | null
