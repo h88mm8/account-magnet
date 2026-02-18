@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Building2, MapPin, Users, BookmarkPlus, Bookmark, Factory, MoreHorizontal } from "lucide-react";
+import { Building2, MapPin, Users, BookmarkPlus, Bookmark, Factory, MoreHorizontal, Phone, Globe } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,6 +58,7 @@ export function ResultsTable({ results, isLoading }: Props) {
       location: results[i].location,
       headcount: results[i].employeeCount,
       linkedin_url: results[i].linkedinUrl,
+      phone: results[i].phone || undefined,
     }));
   };
 
@@ -129,12 +130,29 @@ export function ResultsTable({ results, isLoading }: Props) {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
-                          <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-sm font-medium text-foreground">{displayName}</span>
-                          {saved && <Bookmark className="h-3.5 w-3.5 fill-primary text-primary" />}
+                        {item.logoUrl ? (
+                          <img
+                            src={item.logoUrl}
+                            alt={displayName}
+                            className="h-8 w-8 shrink-0 rounded-md object-contain border border-border bg-background p-0.5"
+                            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                          />
+                        ) : (
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
+                            <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-medium text-foreground truncate">{displayName}</span>
+                            {saved && <Bookmark className="h-3.5 w-3.5 shrink-0 fill-primary text-primary" />}
+                          </div>
+                          {item.website && (
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground truncate">
+                              <Globe className="h-3 w-3 shrink-0" />
+                              <span className="truncate">{item.domain || item.website}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </TableCell>
@@ -151,9 +169,17 @@ export function ResultsTable({ results, isLoading }: Props) {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                        <Users className="h-3 w-3 shrink-0" />
-                        {item.employeeCount || FALLBACK}
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                          <Users className="h-3 w-3 shrink-0" />
+                          {item.employeeCount || FALLBACK}
+                        </div>
+                        {item.phone && (
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <Phone className="h-3 w-3 shrink-0 text-primary" />
+                            <span className="truncate">{item.phone}</span>
+                          </div>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>

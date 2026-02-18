@@ -22,6 +22,8 @@ type SaveItem = {
   location?: string;
   linkedin_url?: string;
   headcount?: string;
+  email?: string;
+  phone?: string;
 };
 
 type Props = {

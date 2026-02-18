@@ -139,6 +139,8 @@ export function useProspectLists() {
       location?: string;
       linkedin_url?: string;
       headcount?: string;
+      email?: string;
+      phone?: string;
     }>
   ) => {
     if (!user) return;

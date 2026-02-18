@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User, MapPin, Building2, BookmarkPlus, Bookmark, MoreHorizontal } from "lucide-react";
+import { User, MapPin, Building2, BookmarkPlus, Bookmark, MoreHorizontal, Mail, Phone } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -60,6 +60,8 @@ export function LeadResultsTable({ results, isLoading }: Props) {
         company: r.company,
         location: r.location,
         linkedin_url: r.linkedinUrl,
+        email: r.email || undefined,
+        phone: r.phoneNumber || undefined,
       };
     });
   };
@@ -124,9 +126,10 @@ export function LeadResultsTable({ results, isLoading }: Props) {
                 <TableHead className="w-10 pl-5">
                   <Checkbox checked={selected.size === results.length && results.length > 0} onCheckedChange={toggleAll} />
                 </TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Lead</TableHead>
+             <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Lead</TableHead>
                 <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Empresa</TableHead>
                 <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Localização</TableHead>
+                <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Contato</TableHead>
                 <TableHead className="w-24 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-center">Ações</TableHead>
               </TableRow>
             </TableHeader>
@@ -183,7 +186,28 @@ export function LeadResultsTable({ results, isLoading }: Props) {
                       </div>
                     </TableCell>
 
-                    {/* Actions */}
+                    {/* Contact: email + phone indicators */}
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {item.email ? (
+                          <div className="flex items-center gap-1 text-xs text-foreground" title={item.email}>
+                            <Mail className="h-3.5 w-3.5 text-primary shrink-0" />
+                            <span className="truncate max-w-[120px]">{item.email}</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground/40">
+                            <Mail className="h-3.5 w-3.5 shrink-0" />
+                            <span>—</span>
+                          </div>
+                        )}
+                        {item.phoneNumber && (
+                          <div className="flex items-center gap-1 text-xs text-foreground" title={item.phoneNumber}>
+                            <Phone className="h-3.5 w-3.5 text-primary shrink-0" />
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+
                     <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-1">
                         {user && (
