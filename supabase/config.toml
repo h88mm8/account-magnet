@@ -38,3 +38,9 @@ verify_jwt = false
 
 [functions.send-click-notification]
 verify_jwt = false
+
+[functions.unipile-messages]
+verify_jwt = false
+
+[functions.unipile-webhook]
+verify_jwt = false

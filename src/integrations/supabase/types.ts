@@ -154,6 +154,51 @@ export type Database = {
           },
         ]
       }
+      instances: {
+        Row: {
+          created_at: string
+          daily_reset_at: string | null
+          daily_send_limit: number
+          daily_sent_count: number
+          id: string
+          max_delay_seconds: number
+          min_delay_seconds: number
+          name: string
+          status: string
+          unipile_account_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          daily_reset_at?: string | null
+          daily_send_limit?: number
+          daily_sent_count?: number
+          id?: string
+          max_delay_seconds?: number
+          min_delay_seconds?: number
+          name: string
+          status?: string
+          unipile_account_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          daily_reset_at?: string | null
+          daily_send_limit?: number
+          daily_sent_count?: number
+          id?: string
+          max_delay_seconds?: number
+          min_delay_seconds?: number
+          name?: string
+          status?: string
+          unipile_account_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       link_clicks: {
         Row: {
           clicked_at: string
@@ -224,6 +269,156 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      messages_received: {
+        Row: {
+          content: string | null
+          created_at: string
+          id: string
+          instance_id: string | null
+          lead_id: string | null
+          media_url: string | null
+          message_type: string
+          phone: string | null
+          raw_payload: Json | null
+          received_at: string | null
+          unipile_chat_id: string | null
+          unipile_message_id: string | null
+          user_id: string
+          workflow_instance_id: string | null
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          id?: string
+          instance_id?: string | null
+          lead_id?: string | null
+          media_url?: string | null
+          message_type?: string
+          phone?: string | null
+          raw_payload?: Json | null
+          received_at?: string | null
+          unipile_chat_id?: string | null
+          unipile_message_id?: string | null
+          user_id: string
+          workflow_instance_id?: string | null
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          id?: string
+          instance_id?: string | null
+          lead_id?: string | null
+          media_url?: string | null
+          message_type?: string
+          phone?: string | null
+          raw_payload?: Json | null
+          received_at?: string | null
+          unipile_chat_id?: string | null
+          unipile_message_id?: string | null
+          user_id?: string
+          workflow_instance_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_received_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messages_sent: {
+        Row: {
+          campaign_id: string | null
+          campaign_lead_id: string | null
+          content: string | null
+          created_at: string
+          delivered_at: string | null
+          error_message: string | null
+          id: string
+          instance_id: string | null
+          lead_id: string | null
+          media_url: string | null
+          message_type: string
+          node_id: string | null
+          phone: string | null
+          read_at: string | null
+          sent_at: string | null
+          status: string
+          unipile_message_id: string | null
+          updated_at: string
+          user_id: string
+          workflow_instance_id: string | null
+        }
+        Insert: {
+          campaign_id?: string | null
+          campaign_lead_id?: string | null
+          content?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          error_message?: string | null
+          id?: string
+          instance_id?: string | null
+          lead_id?: string | null
+          media_url?: string | null
+          message_type?: string
+          node_id?: string | null
+          phone?: string | null
+          read_at?: string | null
+          sent_at?: string | null
+          status?: string
+          unipile_message_id?: string | null
+          updated_at?: string
+          user_id: string
+          workflow_instance_id?: string | null
+        }
+        Update: {
+          campaign_id?: string | null
+          campaign_lead_id?: string | null
+          content?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          error_message?: string | null
+          id?: string
+          instance_id?: string | null
+          lead_id?: string | null
+          media_url?: string | null
+          message_type?: string
+          node_id?: string | null
+          phone?: string | null
+          read_at?: string | null
+          sent_at?: string | null
+          status?: string
+          unipile_message_id?: string | null
+          updated_at?: string
+          user_id?: string
+          workflow_instance_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_sent_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_sent_campaign_lead_id_fkey"
+            columns: ["campaign_lead_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_sent_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "instances"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       notifications: {
         Row: {

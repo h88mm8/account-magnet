@@ -308,53 +308,44 @@ Deno.serve(async (req) => {
             }
           }
 
-          // ============ WHATSAPP ============
+          // ============ WHATSAPP — delegated to unipile-messages ============
           else if (campaign.channel === "whatsapp") {
             if (!leadData.phone) {
               errorMsg = "Sem número de telefone";
-            } else if (!UNIPILE_BASE_URL || !UNIPILE_API_KEY || !channelAccountId) {
-              errorMsg = "WhatsApp não configurado";
             } else {
-              let message = (campaign.message_template || "").replace(/\{\{name\}\}/g, leadData.name || "");
-              const cleanPhone = leadData.phone.replace(/\D/g, "");
-
-              // Wrap URLs for tracking (only when we have user + lead context)
-              if (SUPABASE_PROJECT_ID && campaign.user_id && lead.lead_id) {
-                message = await wrapUrlsInMessage(
-                  supabase,
-                  message,
-                  campaign.user_id,
-                  lead.lead_id,
-                  lead.id,
-                  SUPABASE_PROJECT_ID
-                );
-              }
-
+              const message = (campaign.message_template || "").replace(/\{\{name\}\}/g, leadData.name || "");
               try {
-                console.log(`[SEND] WhatsApp to ${cleanPhone} via account ${channelAccountId}`);
-                const formData = new FormData();
-                formData.append("account_id", channelAccountId);
-                formData.append("text", message);
-                formData.append("attendees_ids", cleanPhone);
-
-                const resp = await fetch(`${UNIPILE_BASE_URL}/api/v1/chats`, {
-                  method: "POST",
-                  headers: {
-                    "X-API-KEY": UNIPILE_API_KEY,
-                    "accept": "application/json",
-                  },
-                  body: formData,
-                });
-                if (resp.ok) {
+                console.log(`[SEND] Delegating WhatsApp send to unipile-messages for lead ${lead.lead_id}`);
+                const msgResp = await fetch(
+                  `${Deno.env.get("SUPABASE_URL")}/functions/v1/unipile-messages`,
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "apikey": Deno.env.get("SUPABASE_ANON_KEY") || "",
+                      "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                    },
+                    body: JSON.stringify({
+                      userId: campaign.user_id,
+                      phone: leadData.phone,
+                      content: message,
+                      campaignId: campaign.id,
+                      campaignLeadId: lead.id,
+                      leadId: lead.lead_id,
+                      messageType: "text",
+                    }),
+                  }
+                );
+                const msgData = await msgResp.json().catch(() => ({}));
+                if (msgData.success) {
                   success = true;
-                  console.log(`[SEND] WhatsApp sent successfully`);
+                  console.log(`[SEND] WhatsApp sent via unipile-messages. msg_id=${msgData.message_id}`);
                 } else {
-                  const errBody = await resp.text().catch(() => "");
-                  errorMsg = `WhatsApp API error [${resp.status}]: ${errBody.slice(0, 200)}`;
+                  errorMsg = msgData.error || "unipile-messages returned failure";
                   console.error(`[SEND_FAIL] ${errorMsg}`);
                 }
               } catch (e) {
-                errorMsg = `WhatsApp request failed: ${e.message}`;
+                errorMsg = `WhatsApp delegation failed: ${e.message}`;
                 console.error(`[SEND_FAIL] ${errorMsg}`);
               }
             }
