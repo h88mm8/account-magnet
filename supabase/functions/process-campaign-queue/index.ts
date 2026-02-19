@@ -276,7 +276,8 @@ Deno.serve(async (req) => {
             } else if (!UNIPILE_BASE_URL || !UNIPILE_API_KEY || !channelAccountId) {
               errorMsg = "Provedor de email não configurado";
             } else {
-              const message = (campaign.message_template || "").replace(/\{\{name\}\}/g, leadData.name || "");
+              const rawMessage = (campaign.message_template || "").replace(/\{\{name\}\}/g, leadData.name || "");
+              const message = await wrapUrlsInMessage(supabase, rawMessage, campaign.user_id, lead.lead_id, lead.id, SUPABASE_PROJECT_ID);
               try {
                 console.log(`[SEND] Email to ${leadData.email} via account ${channelAccountId}`);
                 const resp = await fetch(`${UNIPILE_BASE_URL}/api/v1/emails`, {
@@ -385,7 +386,8 @@ Deno.serve(async (req) => {
                 console.log(`[RESOLVE] Cached provider_id ${resolvedProviderId} for lead ${lead.lead_id}`);
               }
 
-              const message = (campaign.message_template || "").replace(/\{\{name\}\}/g, leadData.name || "");
+              const rawMessage = (campaign.message_template || "").replace(/\{\{name\}\}/g, leadData.name || "");
+              const message = await wrapUrlsInMessage(supabase, rawMessage, campaign.user_id, lead.lead_id, lead.id, SUPABASE_PROJECT_ID);
 
               try {
                 if (campaign.linkedin_type === "connection_request") {
