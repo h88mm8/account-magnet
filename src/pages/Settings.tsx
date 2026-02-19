@@ -19,6 +19,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 const Settings = () => {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { status: waStatus, disconnect: waDisconnect } = useWhatsAppConnection();
   const linkedin = useIntegration("linkedin");
   const email = useIntegration("email");
@@ -28,6 +31,60 @@ const Settings = () => {
 
   const searchParams = new URLSearchParams(window.location.search);
   const defaultTab = searchParams.get("tab") || "profile";
+
+  // Email settings query
+  const { data: emailSettings } = useQuery({
+    queryKey: ["email-settings"],
+    queryFn: async () => {
+      if (!user) return null;
+      const { data } = await supabase
+        .from("email_settings" as any)
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+      return (data as unknown) as { email_signature: string | null; scheduling_link: string | null; scheduling_title: string | null; scheduling_duration: string | null } | null;
+    },
+    enabled: !!user,
+  });
+
+  const [signature, setSignature] = useState<string>("");
+  const [schedulingLink, setSchedulingLink] = useState<string>("");
+  const [schedulingTitle, setSchedulingTitle] = useState<string>("Agende uma conversa");
+  const [schedulingDuration, setSchedulingDuration] = useState<string>("30 min");
+
+  // Populate form when data loads
+  useState(() => {
+    if (emailSettings) {
+      setSignature(emailSettings.email_signature || "");
+      setSchedulingLink(emailSettings.scheduling_link || "");
+      setSchedulingTitle(emailSettings.scheduling_title || "Agende uma conversa");
+      setSchedulingDuration(emailSettings.scheduling_duration || "30 min");
+    }
+  });
+
+  const saveEmailSettings = useMutation({
+    mutationFn: async () => {
+      if (!user) throw new Error("Not authenticated");
+      const payload = {
+        user_id: user.id,
+        email_signature: signature || null,
+        scheduling_link: schedulingLink || null,
+        scheduling_title: schedulingTitle || "Agende uma conversa",
+        scheduling_duration: schedulingDuration || "30 min",
+      };
+      const { error } = await supabase
+        .from("email_settings" as any)
+        .upsert(payload, { onConflict: "user_id" });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["email-settings"] });
+      toast({ title: "Configurações de email salvas!" });
+    },
+    onError: (e: any) => {
+      toast({ title: "Erro ao salvar", description: e.message, variant: "destructive" });
+    },
+  });
 
   return (
     <div className="space-y-6 p-6 lg:p-8">
@@ -47,6 +104,10 @@ const Settings = () => {
           <TabsTrigger value="integrations" className="gap-2">
             <Link2 className="h-4 w-4" />
             Integrações
+          </TabsTrigger>
+          <TabsTrigger value="email" className="gap-2">
+            <Pen className="h-4 w-4" />
+            E-mail
           </TabsTrigger>
           <TabsTrigger value="notifications" className="gap-2">
             <Bell className="h-4 w-4" />
@@ -158,6 +219,93 @@ const Settings = () => {
               />
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Email settings */}
+        <TabsContent value="email">
+          <div className="space-y-4">
+            {/* Signature */}
+            <Card className="border border-border shadow-none">
+              <CardHeader>
+                <CardTitle className="font-display text-lg">Assinatura de E-mail</CardTitle>
+                <CardDescription>
+                  Adicionada automaticamente ao final de todos os emails enviados em campanhas.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Textarea
+                  value={signature}
+                  onChange={(e) => setSignature(e.target.value)}
+                  placeholder={"Atenciosamente,\nSeu Nome\nCargo · Empresa\nTelefone"}
+                  rows={5}
+                  className="font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Você pode usar HTML básico para formatar sua assinatura.
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Scheduling link */}
+            <Card className="border border-border shadow-none">
+              <CardHeader>
+                <CardTitle className="font-display text-lg">Link de Agendamento</CardTitle>
+                <CardDescription>
+                  Configure o bloco de agendamento que pode ser inserido nos emails (Cal.com, Calendly, etc.).
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>URL do calendário</Label>
+                  <Input
+                    value={schedulingLink}
+                    onChange={(e) => setSchedulingLink(e.target.value)}
+                    placeholder="https://cal.com/seu-nome/reuniao"
+                  />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Título do bloco</Label>
+                    <Input
+                      value={schedulingTitle}
+                      onChange={(e) => setSchedulingTitle(e.target.value)}
+                      placeholder="Agende uma conversa"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Duração</Label>
+                    <Input
+                      value={schedulingDuration}
+                      onChange={(e) => setSchedulingDuration(e.target.value)}
+                      placeholder="30 min"
+                    />
+                  </div>
+                </div>
+
+                {/* Preview */}
+                {schedulingLink && (
+                  <div className="rounded-lg border border-border p-4 bg-muted/20">
+                    <p className="text-xs text-muted-foreground mb-2 font-medium">Preview do bloco:</p>
+                    <div style={{ padding: "16px", border: "1px solid #e2e8f0", borderRadius: "8px", display: "inline-block" }}>
+                      <p style={{ margin: "0 0 8px", fontWeight: 600, fontSize: "14px" }}>📅 {schedulingTitle}</p>
+                      <p style={{ margin: "0 0 12px", color: "#64748b", fontSize: "13px" }}>{schedulingDuration} · Online</p>
+                      <a href={schedulingLink} style={{ background: "#3b82f6", color: "#fff", padding: "8px 16px", borderRadius: "6px", textDecoration: "none", fontSize: "13px" }}>
+                        Veja todos os horários disponíveis
+                      </a>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Button
+              onClick={() => saveEmailSettings.mutate()}
+              disabled={saveEmailSettings.isPending}
+              size="sm"
+            >
+              {saveEmailSettings.isPending ? "Salvando..." : "Salvar configurações de email"}
+            </Button>
+          </div>
         </TabsContent>
 
         {/* Notifications */}

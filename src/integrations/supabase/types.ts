@@ -154,6 +154,39 @@ export type Database = {
           },
         ]
       }
+      email_settings: {
+        Row: {
+          created_at: string
+          email_signature: string | null
+          id: string
+          scheduling_duration: string | null
+          scheduling_link: string | null
+          scheduling_title: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email_signature?: string | null
+          id?: string
+          scheduling_duration?: string | null
+          scheduling_link?: string | null
+          scheduling_title?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email_signature?: string | null
+          id?: string
+          scheduling_duration?: string | null
+          scheduling_link?: string | null
+          scheduling_title?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       instances: {
         Row: {
           created_at: string
