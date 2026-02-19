@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Building2, Users, TrendingUp, Target, Download, Send, Reply, Mail, MousePointerClick } from "lucide-react";
+import { Building2, Users, TrendingUp, Target, Download, Send, Reply, Mail, MousePointerClick, ExternalLink } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,9 +28,11 @@ import {
   useTopLeadsByClicks,
 } from "@/hooks/useRealMetrics";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EngagedLeadsModal } from "@/components/EngagedLeadsModal";
 
 const Analytics = () => {
   const [period, setPeriod] = useState("7d");
+  const [engagedOpen, setEngagedOpen] = useState(false);
   const { data: metrics, isLoading: metricsLoading } = useRealMetrics();
   const { data: monthlyData, isLoading: monthlyLoading } = useMonthlyChartData();
   const { data: industryData, isLoading: industryLoading } = useIndustryChartData();
@@ -149,17 +151,28 @@ const Analytics = () => {
 
         {/* Top leads by clicks */}
         <Card className="border border-border shadow-none">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
             <CardTitle className="font-display text-base font-semibold">
               Leads mais engajados
             </CardTitle>
+            {topLeads && topLeads.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 text-xs text-primary"
+                onClick={() => setEngagedOpen(true)}
+              >
+                <ExternalLink className="h-3 w-3" />
+                Ver todos
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
             {topLeadsLoading ? (
               <Skeleton className="h-[240px] w-full" />
             ) : topLeads && topLeads.length > 0 ? (
               <div className="space-y-3">
-                {topLeads.map((lead, i) => (
+                {topLeads.slice(0, 5).map((lead, i) => (
                   <div key={lead.lead_id} className="flex items-center gap-3">
                     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
                       {i + 1}
@@ -176,6 +189,16 @@ const Analytics = () => {
                     </span>
                   </div>
                 ))}
+                {topLeads.length > 5 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-xs text-muted-foreground"
+                    onClick={() => setEngagedOpen(true)}
+                  >
+                    +{topLeads.length - 5} leads · Ver todos
+                  </Button>
+                )}
               </div>
             ) : (
               <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground text-center px-4">
@@ -185,6 +208,8 @@ const Analytics = () => {
           </CardContent>
         </Card>
       </div>
+
+      <EngagedLeadsModal open={engagedOpen} onOpenChange={setEngagedOpen} />
 
       {/* Existing Charts */}
       <div className="grid gap-6 lg:grid-cols-2">

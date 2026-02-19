@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LeadMiniCard } from "@/components/LeadMiniCard";
+import { ListItemDetailModal } from "@/components/ListItemDetailModal";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Progress } from "@/components/ui/progress";
@@ -40,6 +41,8 @@ export default function Lists() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
+  const [detailItem, setDetailItem] = useState<ProspectListItem | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
   const bulkAbortRef = useRef(false);
 
   // Reset selection when switching lists
@@ -295,6 +298,7 @@ export default function Lists() {
 
   if (selectedList) {
     return (
+      <>
       <div className="space-y-6 p-6 lg:p-8">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" onClick={() => { setSelectedListId(null); setSearchQuery(""); }}>
@@ -451,25 +455,15 @@ export default function Lists() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <LeadMiniCard
-                          data={{
-                            type: isLead ? "lead" : "account",
-                            name: item.name,
-                            title: item.title,
-                            company: item.company,
-                            location: item.location,
-                            industry: item.industry,
-                            headcount: item.headcount,
-                          }}
-                          showSaveButton={false}
+                        <button
+                          className="flex items-center gap-2 cursor-pointer hover:underline text-left group/name"
+                          onClick={() => { setDetailItem(item); setDetailOpen(true); }}
                         >
-                          <div className="flex items-center gap-2 cursor-pointer">
-                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted">
-                              {isLead ? <User className="h-3 w-3 text-muted-foreground" /> : <Building2 className="h-3 w-3 text-muted-foreground" />}
-                            </div>
-                            <span className="text-sm font-medium text-foreground">{item.name}</span>
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted group-hover/name:bg-primary/10 transition-colors">
+                            {isLead ? <User className="h-3 w-3 text-muted-foreground" /> : <Building2 className="h-3 w-3 text-muted-foreground" />}
                           </div>
-                        </LeadMiniCard>
+                          <span className="text-sm font-medium text-foreground group-hover/name:text-primary transition-colors">{item.name}</span>
+                        </button>
                       </TableCell>
                       {selectedList.list_type === "leads" ? (
                         <>
@@ -584,6 +578,13 @@ export default function Lists() {
           </Card>
         )}
       </div>
+
+      <ListItemDetailModal
+        item={detailItem}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+      />
+      </>
     );
   }
 

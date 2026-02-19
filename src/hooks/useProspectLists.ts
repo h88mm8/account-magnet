@@ -32,6 +32,7 @@ export type ProspectListItem = {
   enrichment_status: string | null;
   email_checked_at: string | null;
   phone_checked_at: string | null;
+  link_clicks_count: number;
   created_at: string;
 };
 
