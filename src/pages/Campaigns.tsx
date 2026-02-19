@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Plus, Play, Pause, Mail, MessageSquare, Linkedin, Send, Users, CheckCircle, XCircle, Eye, Reply, AlertTriangle, Trash2, MousePointerClick } from "lucide-react";
+import { Plus, Play, Pause, Mail, MessageSquare, Linkedin, Send, Users, CheckCircle, XCircle, Eye, Reply, AlertTriangle, Trash2, MousePointerClick, ChevronRight } from "lucide-react";
+import { EmailCampaignEditor } from "@/components/EmailCampaignEditor";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -63,6 +64,8 @@ const Campaigns = () => {
   const addLeads = useAddLeadsToCampaign();
 
   const [showCreate, setShowCreate] = useState(false);
+  const [showEmailEditor, setShowEmailEditor] = useState(false);
+  const [showChannelPicker, setShowChannelPicker] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [campaignToDelete, setCampaignToDelete] = useState<Campaign | null>(null);
 
@@ -178,7 +181,7 @@ const Campaigns = () => {
             Gerencie campanhas de prospecção por WhatsApp, Email e LinkedIn.
           </p>
         </div>
-        <Button onClick={() => setShowCreate(true)} className="gap-2">
+        <Button onClick={() => setShowChannelPicker(true)} className="gap-2">
           <Plus className="h-4 w-4" />
           Nova Campanha
         </Button>
@@ -291,11 +294,59 @@ const Campaigns = () => {
         </div>
       )}
 
-      {/* Create campaign dialog */}
+      {/* Channel picker dialog */}
+      <Dialog open={showChannelPicker} onOpenChange={setShowChannelPicker}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Selecione o canal da campanha</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            {[
+              { label: "E-mail", icon: Mail, desc: "Disparos com rastreamento, variáveis e preview", value: "email", color: "text-red-500", bg: "bg-red-50 dark:bg-red-950/20" },
+              { label: "WhatsApp", icon: MessageSquare, desc: "Mensagens em massa via WhatsApp conectado", value: "whatsapp", color: "text-green-600", bg: "bg-green-50 dark:bg-green-950/20" },
+              { label: "LinkedIn", icon: Linkedin, desc: "Convites, InMails e mensagens para conexões", value: "linkedin", color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950/20" },
+            ].map((ch) => (
+              <button
+                key={ch.value}
+                onClick={() => {
+                  setShowChannelPicker(false);
+                  if (ch.value === "email") {
+                    setShowEmailEditor(true);
+                  } else {
+                    setChannel(ch.value);
+                    setShowCreate(true);
+                  }
+                }}
+                className="w-full flex items-center gap-3 rounded-lg border border-border p-3.5 text-left hover:bg-accent transition-colors"
+              >
+                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${ch.bg}`}>
+                  <ch.icon className={`h-5 w-5 ${ch.color}`} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">{ch.label}</p>
+                  <p className="text-xs text-muted-foreground">{ch.desc}</p>
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email campaign editor */}
+      <EmailCampaignEditor
+        open={showEmailEditor}
+        onOpenChange={setShowEmailEditor}
+        onCreated={() => {}}
+      />
+
+      {/* Create campaign dialog (WhatsApp / LinkedIn) */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Nova Campanha</DialogTitle>
+            <DialogTitle>
+              Nova Campanha {channel === "whatsapp" ? "WhatsApp" : channel === "linkedin" ? "LinkedIn" : ""}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -307,7 +358,6 @@ const Campaigns = () => {
               <Select value={channel} onValueChange={setChannel}>
                 <SelectTrigger><SelectValue placeholder="Selecione o canal" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="email">Email</SelectItem>
                   <SelectItem value="whatsapp">WhatsApp</SelectItem>
                   <SelectItem value="linkedin">LinkedIn</SelectItem>
                 </SelectContent>
@@ -332,13 +382,6 @@ const Campaigns = () => {
                     <SelectItem value="message">Mensagem para conexões existentes</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-            )}
-
-            {channel === "email" && (
-              <div>
-                <Label>Assunto do email</Label>
-                <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Assunto" />
               </div>
             )}
 
