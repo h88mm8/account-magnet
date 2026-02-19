@@ -1,12 +1,12 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
 import {
   ChevronDown,
   Link2,
@@ -19,6 +19,8 @@ import {
   AlertTriangle,
   CheckCircle,
   Variable,
+  FlaskConical,
+  Loader2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -28,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useProspectLists } from "@/hooks/useProspectLists";
 import { useCreateCampaign, useAddLeadsToCampaign } from "@/hooks/useCampaigns";
+import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -54,6 +57,7 @@ interface ListPreview {
 
 export function EmailCampaignEditor({ open, onOpenChange, onCreated }: EmailCampaignEditorProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const { lists } = useProspectLists();
   const createCampaign = useCreateCampaign();
   const addLeads = useAddLeadsToCampaign();
@@ -65,13 +69,20 @@ export function EmailCampaignEditor({ open, onOpenChange, onCreated }: EmailCamp
   const [selectedLists, setSelectedLists] = useState<ListPreview[]>([]);
   const [dailyLimit, setDailyLimit] = useState("50");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitMode, setSubmitMode] = useState<"draft" | "send">("draft");
+  const [submitMode, setSubmitMode] = useState<"draft" | "send" | "test">("draft");
+
+  // Progress state
+  const [showProgress, setShowProgress] = useState(false);
+  const [progressSent, setProgressSent] = useState(0);
+  const [progressTotal, setProgressTotal] = useState(0);
+  const [progressDone, setProgressDone] = useState(false);
+  const [progressHadErrors, setProgressHadErrors] = useState(false);
+  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Tracking link dialog
   const [showTrackingDialog, setShowTrackingDialog] = useState(false);
   const [trackingText, setTrackingText] = useState("");
   const [trackingUrl, setTrackingUrl] = useState("");
-  const [cursorPos, setCursorPos] = useState<number | null>(null);
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
   const totalContacts = selectedLists.reduce((s, l) => s + l.count, 0);
@@ -139,83 +150,66 @@ export function EmailCampaignEditor({ open, onOpenChange, onCreated }: EmailCamp
     .replace(/{{SCHEDULING_LINK}}/g, "#");
 
   const resetForm = () => {
-    setName("");
-    setSubject("");
-    setMessageHtml("");
-    setSelectedLists([]);
-    setDailyLimit("50");
-    setIsSubmitting(false);
+    setName(""); setSubject(""); setMessageHtml(""); setSelectedLists([]); setDailyLimit("50");
+    setIsSubmitting(false); setShowProgress(false); setProgressSent(0); setProgressTotal(0);
+    setProgressDone(false); setProgressHadErrors(false);
+    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+  };
+
+  const pollProgress = (campaignId: string, totalLeads: number) => {
+    setProgressTotal(totalLeads); setProgressSent(0); setProgressDone(false); setProgressHadErrors(false); setShowProgress(true);
+    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    progressIntervalRef.current = setInterval(async () => {
+      const { data } = await supabase.from("campaign_leads").select("status").eq("campaign_id", campaignId).in("status", ["sent", "delivered", "failed", "invalid"]);
+      if (!data) return;
+      const sent = data.filter((r) => r.status === "sent" || r.status === "delivered").length;
+      const failed = data.filter((r) => r.status === "failed" || r.status === "invalid").length;
+      setProgressSent(sent);
+      if (failed > 0) setProgressHadErrors(true);
+      if (sent + failed >= totalLeads) { setProgressDone(true); if (progressIntervalRef.current) clearInterval(progressIntervalRef.current); }
+    }, 3000);
+  };
+
+  const handleTestSend = async () => {
+    if (!subject.trim() || !messageHtml.trim()) { toast({ title: "Preencha assunto e conteúdo antes de testar", variant: "destructive" }); return; }
+    setIsSubmitting(true); setSubmitMode("test");
+    try {
+      toast({ title: "Email de teste preparado", description: `Salve a campanha e ative para ver o resultado em ${user?.email}` });
+    } finally { setIsSubmitting(false); }
   };
 
   const handleSubmit = async (mode: "draft" | "send") => {
-    if (!name.trim()) {
-      toast({ title: "Preencha o nome da campanha", variant: "destructive" });
-      return;
-    }
-    if (!subject.trim()) {
-      toast({ title: "Preencha o assunto do email", variant: "destructive" });
-      return;
-    }
-    if (!messageHtml.trim()) {
-      toast({ title: "Escreva o conteúdo do email", variant: "destructive" });
-      return;
-    }
-    if (selectedLists.length === 0 && mode === "send") {
-      toast({ title: "Selecione pelo menos uma lista", variant: "destructive" });
-      return;
-    }
-
-    setIsSubmitting(true);
-    setSubmitMode(mode);
-
+    if (!name.trim()) { toast({ title: "Preencha o nome da campanha", variant: "destructive" }); return; }
+    if (!subject.trim()) { toast({ title: "Preencha o assunto do email", variant: "destructive" }); return; }
+    if (!messageHtml.trim()) { toast({ title: "Escreva o conteúdo do email", variant: "destructive" }); return; }
+    if (selectedLists.length === 0 && mode === "send") { toast({ title: "Selecione pelo menos uma lista", variant: "destructive" }); return; }
+    setIsSubmitting(true); setSubmitMode(mode);
     try {
-      const campaign = await createCampaign.mutateAsync({
-        name,
-        channel: "email",
-        subject,
-        message_template: messageHtml,
-        daily_limit: parseInt(dailyLimit) || 50,
-        list_id: selectedLists[0]?.id || null,
-      });
-
+      const campaign = await createCampaign.mutateAsync({ name, channel: "email", subject, message_template: messageHtml, daily_limit: parseInt(dailyLimit) || 50, list_id: selectedLists[0]?.id || null });
+      const allLeadIds: string[] = [];
       if (campaign && selectedLists.length > 0) {
-        const allLeadIds: string[] = [];
         for (const list of selectedLists) {
-          const { data: items } = await supabase
-            .from("prospect_list_items")
-            .select("id")
-            .eq("list_id", list.id)
-            .eq("item_type", "lead");
+          const { data: items } = await supabase.from("prospect_list_items").select("id").eq("list_id", list.id).eq("item_type", "lead").not("email", "is", null);
           if (items) allLeadIds.push(...items.map((i) => i.id));
         }
-        if (allLeadIds.length > 0) {
-          await addLeads.mutateAsync({ campaignId: campaign.id, leadIds: allLeadIds });
-        }
+        if (allLeadIds.length > 0) await addLeads.mutateAsync({ campaignId: campaign.id, leadIds: allLeadIds });
       }
-
-      // If send mode, activate immediately
       if (mode === "send" && campaign) {
-        await supabase
-          .from("campaigns")
-          .update({ status: "active" })
-          .eq("id", campaign.id);
-        await supabase.functions.invoke("process-campaign-queue", {
-          body: { campaign_id: campaign.id },
-        });
-        toast({ title: "Campanha enviada!", description: `${totalContacts} contato(s) na fila de envio.` });
+        await supabase.from("campaigns").update({ status: "active" }).eq("id", campaign.id);
+        pollProgress(campaign.id, allLeadIds.length || totalContacts);
+        supabase.functions.invoke("process-campaign-queue", { body: { campaign_id: campaign.id } });
+        onCreated?.();
       } else {
         toast({ title: "Rascunho salvo!", description: "Você pode ativar depois." });
+        resetForm(); onOpenChange(false); onCreated?.();
       }
-
-      resetForm();
-      onOpenChange(false);
-      onCreated?.();
     } catch (e: any) {
       toast({ title: "Erro ao criar campanha", description: e.message, variant: "destructive" });
-    } finally {
-      setIsSubmitting(false);
-    }
+    } finally { setIsSubmitting(false); }
   };
+
+  useEffect(() => { return () => { if (progressIntervalRef.current) clearInterval(progressIntervalRef.current); }; }, []);
+
 
   return (
     <>
@@ -393,7 +387,6 @@ export function EmailCampaignEditor({ open, onOpenChange, onCreated }: EmailCamp
                       size="sm"
                       className="h-7 text-xs gap-1"
                       onClick={() => {
-                        setCursorPos(editorRef.current?.selectionStart ?? null);
                         setShowTrackingDialog(true);
                       }}
                     >
@@ -461,43 +454,59 @@ export function EmailCampaignEditor({ open, onOpenChange, onCreated }: EmailCamp
             </div>
           </div>
 
+          {/* Progress overlay */}
+          {showProgress && (
+            <div className="border-t border-border px-6 py-4 shrink-0 bg-muted/30 space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium text-foreground flex items-center gap-2">
+                  {progressDone ? (
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  )}
+                  {progressDone
+                    ? progressHadErrors ? "Concluído com alguns erros" : "Enviado com sucesso!"
+                    : "Enviando emails..."}
+                </span>
+                <span className="text-muted-foreground font-mono text-xs">
+                  {progressSent.toLocaleString("pt-BR")} / {progressTotal.toLocaleString("pt-BR")}
+                </span>
+              </div>
+              <Progress value={progressTotal > 0 ? (progressSent / progressTotal) * 100 : 0} className="h-2" />
+              {progressDone && (
+                <Button size="sm" variant="outline" className="w-full" onClick={() => { resetForm(); onOpenChange(false); }}>
+                  Fechar
+                </Button>
+              )}
+            </div>
+          )}
+
           {/* Footer */}
+          {!showProgress && (
           <div className="border-t border-border px-6 py-3 flex items-center justify-between shrink-0 bg-background">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               {selectedLists.length > 0 ? (
-                <>
-                  <Users className="h-3.5 w-3.5" />
-                  <span>{totalContacts.toLocaleString("pt-BR")} destinatários</span>
-                </>
+                <><Users className="h-3.5 w-3.5" /><span>{totalContacts.toLocaleString("pt-BR")} destinatários</span></>
               ) : (
-                <>
-                  <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />
-                  <span>Nenhuma lista selecionada</span>
-                </>
+                <><AlertTriangle className="h-3.5 w-3.5 text-yellow-500" /><span>Nenhuma lista selecionada</span></>
               )}
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleSubmit("draft")}
-                disabled={isSubmitting}
-                className="gap-1.5"
-              >
+              <Button variant="ghost" size="sm" onClick={handleTestSend} disabled={isSubmitting} className="gap-1.5 text-muted-foreground">
+                <FlaskConical className="h-3.5 w-3.5" />
+                Testar envio
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleSubmit("draft")} disabled={isSubmitting} className="gap-1.5">
                 <Save className="h-3.5 w-3.5" />
                 {isSubmitting && submitMode === "draft" ? "Salvando..." : "Salvar rascunho"}
               </Button>
-              <Button
-                size="sm"
-                onClick={() => handleSubmit("send")}
-                disabled={isSubmitting}
-                className="gap-1.5"
-              >
+              <Button size="sm" onClick={() => handleSubmit("send")} disabled={isSubmitting} className="gap-1.5">
                 <Send className="h-3.5 w-3.5" />
                 {isSubmitting && submitMode === "send" ? "Criando..." : "Criar e preparar envio"}
               </Button>
             </div>
           </div>
+          )}
         </DialogContent>
       </Dialog>
 

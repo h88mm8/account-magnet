@@ -276,8 +276,50 @@ Deno.serve(async (req) => {
             } else if (!UNIPILE_BASE_URL || !UNIPILE_API_KEY || !channelAccountId) {
               errorMsg = "Provedor de email não configurado";
             } else {
-              const rawMessage = (campaign.message_template || "").replace(/\{\{name\}\}/g, leadData.name || "");
+              // Personalise template variables
+              let rawMessage = (campaign.message_template || "")
+                .replace(/\{\{FIRST_NAME\}\}/gi, (leadData.name || "").split(" ")[0] || "")
+                .replace(/\{\{LAST_NAME\}\}/gi, (leadData.name || "").split(" ").slice(1).join(" ") || "")
+                .replace(/\{\{NAME\}\}/gi, leadData.name || "")
+                .replace(/\{\{name\}\}/gi, leadData.name || "")
+                .replace(/\{\{EMAIL\}\}/gi, leadData.email || "")
+                .replace(/\{\{COMPANY\}\}/gi, leadData.company || "");
+
+              // Replace {{TRACKING_URL}} token with site URL + contact_id
+              const siteBase = Deno.env.get("TRACKING_SITE_URL") || "https://account-magnet.lovable.app";
+              const trackingUrlForLead = `${siteBase}/?contact_id=${lead.lead_id}`;
+              rawMessage = rawMessage.replace(/\{\{TRACKING_URL\}\}/g, trackingUrlForLead);
+
+              // Inject contact_id into ALL external links (except mailto: and anchors)
+              rawMessage = rawMessage.replace(
+                /href="(https?:\/\/[^"]+)"/gi,
+                (match, url) => {
+                  // Skip already-processed tracking URLs and supabase redirect URLs
+                  if (url.includes("contact_id=") || url.includes("supabase.co/functions")) return match;
+                  try {
+                    const parsed = new URL(url);
+                    parsed.searchParams.set("contact_id", lead.lead_id);
+                    return `href="${parsed.toString()}"`;
+                  } catch {
+                    return match;
+                  }
+                }
+              );
+
+              // Wrap all URLs in message with short tracking codes
               const message = await wrapUrlsInMessage(supabase, rawMessage, campaign.user_id, lead.lead_id, lead.id, SUPABASE_PROJECT_ID);
+
+              // Append email signature if configured
+              const { data: emailSettings } = await supabase
+                .from("email_settings" as any)
+                .select("email_signature")
+                .eq("user_id", campaign.user_id)
+                .single();
+              const signature = (emailSettings as any)?.email_signature;
+              const finalBody = signature
+                ? `${message}\n\n<br/><br/><div style="border-top:1px solid #e2e8f0;padding-top:12px;color:#64748b;font-size:13px;">${signature}</div>`
+                : message;
+
               try {
                 console.log(`[SEND] Email to ${leadData.email} via account ${channelAccountId}`);
                 const resp = await fetch(`${UNIPILE_BASE_URL}/api/v1/emails`, {
@@ -291,7 +333,7 @@ Deno.serve(async (req) => {
                     account_id: channelAccountId,
                     to: [{ identifier: leadData.email, display_name: leadData.name || "" }],
                     subject: campaign.subject || "Hello",
-                    body: message,
+                    body: finalBody,
                   }),
                 });
                 if (resp.ok) {
