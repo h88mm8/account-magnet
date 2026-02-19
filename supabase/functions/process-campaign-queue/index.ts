@@ -322,19 +322,18 @@ Deno.serve(async (req) => {
 
               try {
                 console.log(`[SEND] Email to ${leadData.email} via account ${channelAccountId}`);
+                const formData = new FormData();
+                formData.append("account_id", channelAccountId);
+                formData.append("to", JSON.stringify([{ identifier: leadData.email, display_name: leadData.name || "" }]));
+                formData.append("subject", campaign.subject || "Hello");
+                formData.append("body", finalBody);
                 const resp = await fetch(`${UNIPILE_BASE_URL}/api/v1/emails`, {
                   method: "POST",
                   headers: {
                     "X-API-KEY": UNIPILE_API_KEY,
-                    "Content-Type": "application/json",
                     "accept": "application/json",
                   },
-                  body: JSON.stringify({
-                    account_id: channelAccountId,
-                    to: [{ identifier: leadData.email, display_name: leadData.name || "" }],
-                    subject: campaign.subject || "Hello",
-                    body: finalBody,
-                  }),
+                  body: formData,
                 });
                 if (resp.ok) {
                   success = true;
