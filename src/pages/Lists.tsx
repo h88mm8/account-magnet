@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LeadMiniCard } from "@/components/LeadMiniCard";
 import { ListItemDetailModal } from "@/components/ListItemDetailModal";
+import { LeadEditModal } from "@/components/LeadEditModal";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Progress } from "@/components/ui/progress";
@@ -43,6 +44,8 @@ export default function Lists() {
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
   const [detailItem, setDetailItem] = useState<ProspectListItem | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [editItem, setEditItem] = useState<ProspectListItem | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
   const bulkAbortRef = useRef(false);
 
   // Reset selection when switching lists
@@ -583,6 +586,20 @@ export default function Lists() {
         item={detailItem}
         open={detailOpen}
         onOpenChange={setDetailOpen}
+        onEdit={() => {
+          setDetailOpen(false);
+          setEditItem(detailItem);
+          setEditOpen(true);
+        }}
+      />
+      <LeadEditModal
+        item={editItem}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSaved={(updated) => {
+          setListItems((prev) => prev.map((i) => (i.id === updated.id ? { ...i, ...updated } : i)));
+          setDetailItem((prev) => (prev?.id === updated.id ? { ...prev, ...updated } : prev));
+        }}
       />
       </>
     );
