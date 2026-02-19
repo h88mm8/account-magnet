@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Play, Pause, Mail, MessageSquare, Linkedin, Send, Users, CheckCircle, XCircle, Eye, Reply, AlertTriangle, Trash2 } from "lucide-react";
+import { Plus, Play, Pause, Mail, MessageSquare, Linkedin, Send, Users, CheckCircle, XCircle, Eye, Reply, AlertTriangle, Trash2, MousePointerClick } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCampaigns, useCreateCampaign, useActivateCampaign, usePauseCampaign, useDeleteCampaign, useCampaignLeads, useAddLeadsToCampaign, checkWhatsAppConnection, checkIntegrationConnection, type Campaign } from "@/hooks/useCampaigns";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useProspectLists } from "@/hooks/useProspectLists";
@@ -18,6 +19,7 @@ import { useWhatsAppConnection } from "@/hooks/useWhatsAppConnection";
 import { useIntegration } from "@/hooks/useIntegrations";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 
 const channelIcons: Record<string, any> = {
   whatsapp: MessageSquare,
@@ -418,38 +420,43 @@ const Campaigns = () => {
 
 function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: () => void }) {
   const { data: leads, isLoading } = useCampaignLeads(campaign.id);
-  const [leadNames, setLeadNames] = useState<Record<string, string>>({});
+  const [leadData, setLeadData] = useState<Record<string, { name: string; email: string | null; phone: string | null }>>({});
+  const [clicksByLead, setClicksByLead] = useState<Record<string, number>>({});
   const Icon = channelIcons[campaign.channel] || Send;
 
-  // Fetch lead names for display
   useEffect(() => {
     if (!leads || leads.length === 0) return;
-    const fetchNames = async () => {
-      const { supabase } = await import("@/integrations/supabase/client");
-      const ids = leads.map((l) => l.lead_id);
-      const { data } = await supabase
-        .from("prospect_list_items")
-        .select("id, name, email, phone")
-        .in("id", ids);
-      if (data) {
-        const map: Record<string, string> = {};
-        data.forEach((d) => { map[d.id] = d.name || d.email || d.phone || d.id.slice(0, 8); });
-        setLeadNames(map);
-      }
-    };
-    fetchNames();
+    const ids = leads.map((l) => l.lead_id);
+
+    // Fetch lead details
+    supabase
+      .from("prospect_list_items")
+      .select("id, name, email, phone, link_clicks_count")
+      .in("id", ids)
+      .then(({ data }) => {
+        if (data) {
+          const map: Record<string, { name: string; email: string | null; phone: string | null }> = {};
+          const clicks: Record<string, number> = {};
+          data.forEach((d) => {
+            map[d.id] = { name: d.name || d.email || d.id.slice(0, 8), email: d.email, phone: d.phone };
+            clicks[d.id] = d.link_clicks_count || 0;
+          });
+          setLeadData(map);
+          setClicksByLead(clicks);
+        }
+      });
   }, [leads]);
 
   const statusColors: Record<string, string> = {
     pending: "bg-muted text-muted-foreground",
     queued: "bg-primary/10 text-primary",
-    sent: "bg-blue-100 text-blue-700",
-    delivered: "bg-green-100 text-green-700",
-    opened: "bg-amber-100 text-amber-700",
-    replied: "bg-emerald-100 text-emerald-700",
+    sent: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+    delivered: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+    opened: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+    replied: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
     failed: "bg-destructive/10 text-destructive",
-    accepted: "bg-violet-100 text-violet-700",
-    invalid: "bg-orange-100 text-orange-700",
+    accepted: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300",
+    invalid: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
   };
 
   const statusLabels: Record<string, string> = {
@@ -464,9 +471,15 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
     invalid: "Inválido",
   };
 
+  const repliedLeads = leads?.filter((l) => l.replied_at) || [];
+  const clickedLeads = leads?.filter((l) => clicksByLead[l.lead_id] > 0) || [];
+  const totalRate = leads && leads.length > 0
+    ? Math.round(((repliedLeads.length + clickedLeads.length) / leads.length) * 100)
+    : 0;
+
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Icon className="h-5 w-5 text-primary" />
@@ -479,7 +492,8 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
           </DialogTitle>
         </DialogHeader>
 
-        <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+        {/* KPI summary row */}
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 shrink-0">
           {[
             { label: "Enviados", val: campaign.total_sent, icon: Send },
             { label: "Entregues", val: campaign.total_delivered, icon: CheckCircle },
@@ -488,50 +502,234 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
             { label: "Aceitos", val: campaign.total_accepted, icon: Users },
             { label: "Falhas", val: campaign.total_failed, icon: XCircle },
           ].map((s) => (
-            <div key={s.label} className="rounded-lg border border-border p-3 text-center">
-              <s.icon className="mx-auto mb-1 h-4 w-4 text-muted-foreground" />
-              <p className="text-lg font-bold text-foreground">{s.val}</p>
+            <div key={s.label} className="rounded-lg border border-border p-2.5 text-center">
+              <s.icon className="mx-auto mb-1 h-3.5 w-3.5 text-muted-foreground" />
+              <p className="text-base font-bold text-foreground">{s.val}</p>
               <p className="text-[10px] text-muted-foreground">{s.label}</p>
             </div>
           ))}
         </div>
 
-        <div className="max-h-[300px] overflow-auto">
-          {isLoading ? (
-            <Skeleton className="h-40 w-full" />
-          ) : !leads || leads.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Nenhum lead na campanha.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Lead</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Erro</TableHead>
-                  <TableHead>Enviado em</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {leads.map((l) => (
-                  <TableRow key={l.id}>
-                    <TableCell className="text-sm font-medium">
-                      {leadNames[l.lead_id] || l.lead_id.slice(0, 8) + "..."}
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={statusColors[l.status] || ""} variant="secondary">
-                        {statusLabels[l.status] || l.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="max-w-[150px] truncate text-xs text-destructive">
-                      {l.error_message || "—"}
-                    </TableCell>
-                    <TableCell className="text-xs">{l.sent_at ? new Date(l.sent_at).toLocaleString("pt-BR") : "—"}</TableCell>
+        {/* Tabs */}
+        <Tabs defaultValue="leads" className="flex-1 flex flex-col min-h-0">
+          <TabsList className="shrink-0">
+            <TabsTrigger value="leads">
+              Todos os leads {leads ? `(${leads.length})` : ""}
+            </TabsTrigger>
+            <TabsTrigger value="replies">
+              Respostas {repliedLeads.length > 0 ? `(${repliedLeads.length})` : ""}
+            </TabsTrigger>
+            <TabsTrigger value="clicks">
+              Cliques {clickedLeads.length > 0 ? `(${clickedLeads.length})` : ""}
+            </TabsTrigger>
+            <TabsTrigger value="metrics">
+              Métricas
+            </TabsTrigger>
+          </TabsList>
+
+          {/* All Leads tab */}
+          <TabsContent value="leads" className="flex-1 overflow-auto min-h-0 mt-3">
+            {isLoading ? (
+              <Skeleton className="h-40 w-full" />
+            ) : !leads || leads.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">Nenhum lead na campanha.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Lead</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Cliques</TableHead>
+                    <TableHead>Enviado em</TableHead>
                   </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {leads.map((l) => (
+                    <TableRow key={l.id}>
+                      <TableCell>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{leadData[l.lead_id]?.name || l.lead_id.slice(0, 8) + "..."}</p>
+                          {leadData[l.lead_id]?.email && (
+                            <p className="text-xs text-muted-foreground">{leadData[l.lead_id].email}</p>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={statusColors[l.status] || ""} variant="secondary">
+                          {statusLabels[l.status] || l.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {clicksByLead[l.lead_id] > 0 ? (
+                          <span className="flex items-center gap-1 text-xs font-semibold text-primary">
+                            <MousePointerClick className="h-3 w-3" />
+                            {clicksByLead[l.lead_id]}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {l.sent_at ? new Date(l.sent_at).toLocaleString("pt-BR") : "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </TabsContent>
+
+          {/* Replies tab */}
+          <TabsContent value="replies" className="flex-1 overflow-auto min-h-0 mt-3">
+            {isLoading ? (
+              <Skeleton className="h-40 w-full" />
+            ) : repliedLeads.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Reply className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                <p className="text-sm text-muted-foreground">Nenhuma resposta ainda.</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Lead</TableHead>
+                    <TableHead>Enviado em</TableHead>
+                    <TableHead>Respondido em</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {repliedLeads.map((l) => (
+                    <TableRow key={l.id}>
+                      <TableCell>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{leadData[l.lead_id]?.name || l.lead_id.slice(0, 8) + "..."}</p>
+                          {leadData[l.lead_id]?.email && (
+                            <p className="text-xs text-muted-foreground">{leadData[l.lead_id].email}</p>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {l.sent_at ? new Date(l.sent_at).toLocaleString("pt-BR") : "—"}
+                      </TableCell>
+                      <TableCell className="text-xs text-foreground font-medium">
+                        {l.replied_at ? new Date(l.replied_at).toLocaleString("pt-BR") : "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </TabsContent>
+
+          {/* Clicks tab */}
+          <TabsContent value="clicks" className="flex-1 overflow-auto min-h-0 mt-3">
+            {isLoading ? (
+              <Skeleton className="h-40 w-full" />
+            ) : clickedLeads.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <MousePointerClick className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                <p className="text-sm text-muted-foreground">Nenhum clique registrado ainda.</p>
+                <p className="text-xs text-muted-foreground mt-1">Os cliques aparecerão aqui quando os leads acessarem os links das mensagens.</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Lead</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Cliques únicos</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {clickedLeads
+                    .sort((a, b) => (clicksByLead[b.lead_id] || 0) - (clicksByLead[a.lead_id] || 0))
+                    .map((l) => (
+                      <TableRow key={l.id}>
+                        <TableCell>
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{leadData[l.lead_id]?.name || l.lead_id.slice(0, 8) + "..."}</p>
+                            {leadData[l.lead_id]?.email && (
+                              <p className="text-xs text-muted-foreground">{leadData[l.lead_id].email}</p>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={statusColors[l.status] || ""} variant="secondary">
+                            {statusLabels[l.status] || l.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <span className="flex items-center gap-1 text-sm font-bold text-primary">
+                            <MousePointerClick className="h-3.5 w-3.5" />
+                            {clicksByLead[l.lead_id]}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
+            )}
+          </TabsContent>
+
+          {/* Metrics tab */}
+          <TabsContent value="metrics" className="flex-1 overflow-auto min-h-0 mt-3">
+            <div className="space-y-4">
+              {/* Engagement rate */}
+              <div className="rounded-lg border border-border p-4">
+                <h3 className="text-sm font-semibold text-foreground mb-3">Taxa de engajamento geral</h3>
+                <div className="flex items-end gap-3">
+                  <span className="text-3xl font-bold text-primary">{totalRate}%</span>
+                  <span className="text-sm text-muted-foreground mb-1">respostas + cliques / total</span>
+                </div>
+                <div className="mt-3 h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full bg-primary rounded-full transition-all"
+                    style={{ width: `${Math.min(totalRate, 100)}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Metric cards */}
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  {
+                    label: "Taxa de entrega",
+                    value: campaign.total_sent > 0 ? Math.round((campaign.total_delivered / campaign.total_sent) * 100) : 0,
+                    icon: CheckCircle,
+                    desc: `${campaign.total_delivered} de ${campaign.total_sent} enviados`
+                  },
+                  {
+                    label: "Taxa de resposta",
+                    value: campaign.total_sent > 0 ? Math.round((campaign.total_replied / campaign.total_sent) * 100) : 0,
+                    icon: Reply,
+                    desc: `${campaign.total_replied} respondidos`
+                  },
+                  {
+                    label: "Taxa de cliques",
+                    value: leads && leads.length > 0 ? Math.round((clickedLeads.length / leads.length) * 100) : 0,
+                    icon: MousePointerClick,
+                    desc: `${clickedLeads.length} leads clicaram em links`
+                  },
+                  {
+                    label: "Taxa de falha",
+                    value: campaign.total_sent > 0 ? Math.round((campaign.total_failed / campaign.total_sent) * 100) : 0,
+                    icon: XCircle,
+                    desc: `${campaign.total_failed} falhas`
+                  },
+                ].map((m) => (
+                  <div key={m.label} className="rounded-lg border border-border p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <m.icon className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">{m.label}</span>
+                    </div>
+                    <p className="text-2xl font-bold text-foreground">{m.value}%</p>
+                    <p className="text-xs text-muted-foreground mt-1">{m.desc}</p>
+                  </div>
                 ))}
-              </TableBody>
-            </Table>
-          )}
-        </div>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );
