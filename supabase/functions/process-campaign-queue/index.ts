@@ -16,6 +16,44 @@ function generateShortCode(): string {
   return code;
 }
 
+async function createTrackingUrl(
+  supabase: ReturnType<typeof createClient>,
+  originalUrl: string,
+  userId: string,
+  leadId: string,
+  campaignLeadId: string,
+  supabaseProjectId: string
+): Promise<string | null> {
+  let shortCode = generateShortCode();
+  let attempts = 0;
+  while (attempts < 5) {
+    const { count } = await supabase
+      .from("link_tracking")
+      .select("id", { count: "exact", head: true })
+      .eq("short_code", shortCode);
+    if ((count ?? 0) === 0) break;
+    shortCode = generateShortCode();
+    attempts++;
+  }
+
+  const { error } = await supabase.from("link_tracking").insert({
+    user_id: userId,
+    lead_id: leadId,
+    campaign_lead_id: campaignLeadId,
+    original_url: originalUrl,
+    short_code: shortCode,
+  });
+
+  if (error) {
+    console.error(`[TRACKING] Failed to insert tracking for ${originalUrl}:`, error.message);
+    return null;
+  }
+
+  const trackingUrl = `https://${supabaseProjectId}.supabase.co/functions/v1/redirect-link/r/${shortCode}`;
+  console.log(`[TRACKING] Wrapped URL: ${originalUrl} -> ${trackingUrl}`);
+  return trackingUrl;
+}
+
 async function wrapUrlsInMessage(
   supabase: ReturnType<typeof createClient>,
   message: string,
@@ -24,42 +62,41 @@ async function wrapUrlsInMessage(
   campaignLeadId: string,
   supabaseProjectId: string
 ): Promise<string> {
-  const URL_REGEX = /(https?:\/\/[^\s]+)/gi;
-  const urls = message.match(URL_REGEX);
-  if (!urls || urls.length === 0) return message;
+  // Track which URLs we've already processed to avoid double-wrapping
+  const processed = new Map<string, string>();
+
+  async function getOrCreateTracking(url: string): Promise<string> {
+    // Strip trailing HTML artifacts like quotes and angle brackets
+    const cleanUrl = url.replace(/[">]+$/, "");
+    if (processed.has(cleanUrl)) return processed.get(cleanUrl)!;
+    const trackingUrl = await createTrackingUrl(supabase, cleanUrl, userId, leadId, campaignLeadId, supabaseProjectId);
+    const result = trackingUrl || cleanUrl;
+    processed.set(cleanUrl, result);
+    return result;
+  }
 
   let result = message;
-  for (const originalUrl of urls) {
-    // Generate unique short code with collision retry
-    let shortCode = generateShortCode();
-    let attempts = 0;
-    while (attempts < 5) {
-      const { count } = await supabase
-        .from("link_tracking")
-        .select("id", { count: "exact", head: true })
-        .eq("short_code", shortCode);
-      if ((count ?? 0) === 0) break;
-      shortCode = generateShortCode();
-      attempts++;
-    }
 
-    const { error } = await supabase.from("link_tracking").insert({
-      user_id: userId,
-      lead_id: leadId,
-      campaign_lead_id: campaignLeadId,
-      original_url: originalUrl,
-      short_code: shortCode,
-    });
-
-    if (error) {
-      console.error(`[TRACKING] Failed to insert tracking for ${originalUrl}:`, error.message);
-      continue; // keep original URL if tracking insert fails
-    }
-
-    const trackingUrl = `https://${supabaseProjectId}.supabase.co/functions/v1/redirect-link/r/${shortCode}`;
-    result = result.replace(originalUrl, trackingUrl);
-    console.log(`[TRACKING] Wrapped URL: ${originalUrl} -> ${trackingUrl}`);
+  // 1. Replace URLs inside href="..." attributes (HTML-aware)
+  const hrefRegex = /href="(https?:\/\/[^"]+)"/gi;
+  const hrefMatches = [...result.matchAll(hrefRegex)];
+  for (const m of hrefMatches) {
+    const originalUrl = m[1];
+    const trackingUrl = await getOrCreateTracking(originalUrl);
+    result = result.replace(m[0], `href="${trackingUrl}"`);
   }
+
+  // 2. Replace bare URLs (not inside HTML attributes) — skip already-wrapped tracking URLs
+  const bareUrlRegex = /(?<!href="|href='|src="|src=')(https?:\/\/[^\s<>"]+)/gi;
+  const bareMatches = [...result.matchAll(bareUrlRegex)];
+  for (const m of bareMatches) {
+    const originalUrl = m[1];
+    // Skip if it's already a tracking URL
+    if (originalUrl.includes("supabase.co/functions/v1/redirect-link")) continue;
+    const trackingUrl = await getOrCreateTracking(originalUrl);
+    result = result.replace(m[0], trackingUrl);
+  }
+
   return result;
 }
 
