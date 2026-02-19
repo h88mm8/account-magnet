@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Mail, Phone, MapPin, Briefcase, Building2, Users, Factory, ExternalLink, MousePointerClick, Send, CheckCircle, Reply, XCircle, Eye, Clock } from "lucide-react";
+import { Mail, Phone, MapPin, Briefcase, Building2, Users, Factory, ExternalLink, MousePointerClick, Send, CheckCircle, Reply, XCircle, Eye, Clock, Pencil } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -31,9 +31,10 @@ type Props = {
   item: ProspectListItem | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onEdit?: () => void;
 };
 
-export function ListItemDetailModal({ item, open, onOpenChange }: Props) {
+export function ListItemDetailModal({ item, open, onOpenChange, onEdit }: Props) {
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const { data: emailHistory, isLoading: historyLoading } = useLeadEmailHistory(item?.id ?? null);
 
@@ -69,6 +70,11 @@ export function ListItemDetailModal({ item, open, onOpenChange }: Props) {
                   <Badge variant="secondary" className="text-[10px] shrink-0">
                     {isLead ? "Lead" : "Empresa"}
                   </Badge>
+                  {onEdit && (
+                    <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-muted-foreground" onClick={onEdit}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
                 </div>
                 {isLead && item.title && (
                   <p className="text-sm text-muted-foreground truncate">{item.title}</p>
