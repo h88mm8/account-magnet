@@ -19,6 +19,7 @@ export type ProspectListItem = {
   list_id: string;
   item_type: string;
   external_id: string | null;
+  provider_id: string | null;
   name: string;
   title: string | null;
   company: string | null;
@@ -142,6 +143,7 @@ export function useProspectLists() {
       headcount?: string;
       email?: string;
       phone?: string;
+      provider_id?: string;
     }>
   ) => {
     if (!user) return;
@@ -151,7 +153,7 @@ export function useProspectLists() {
       ...item,
     }));
     console.log("[save-to-list] Items being saved:", JSON.stringify(rows.map(r => ({
-      name: r.name, linkedin_url: r.linkedin_url, company: r.company, email: r.email, phone: r.phone,
+      name: r.name, linkedin_url: r.linkedin_url, company: r.company, email: r.email, phone: r.phone, provider_id: r.provider_id,
     })), null, 2));
     const { data: inserted, error } = await supabase
       .from("prospect_list_items")

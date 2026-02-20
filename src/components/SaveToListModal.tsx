@@ -24,6 +24,7 @@ type SaveItem = {
   headcount?: string;
   email?: string;
   phone?: string;
+  provider_id?: string;
 };
 
 type Props = {

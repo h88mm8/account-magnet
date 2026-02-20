@@ -99,6 +99,7 @@ export default function Lists() {
           firstName: nameParts[0] || "",
           lastName: nameParts.slice(1).join(" ") || "",
           company: item.company || "",
+          apolloId: (item as Record<string, unknown>).provider_id as string || undefined,
         };
       });
 
