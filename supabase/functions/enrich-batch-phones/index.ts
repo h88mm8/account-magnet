@@ -1,0 +1,268 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
+const CREDIT_COST_PHONE = 8;
+const MAX_LEADS = 100;
+const CONCURRENCY = 5;
+const APIFY_TIMEOUT_MS = 40000;
+const APIFY_POLL_INTERVAL_MS = 3000;
+
+interface LeadInput {
+  itemId: string;
+  linkedinUrl?: string;
+  firstName?: string;
+  lastName?: string;
+  company?: string;
+}
+
+interface LeadResult {
+  itemId: string;
+  phoneFound: boolean;
+  phone?: string | null;
+  source?: string;
+  status: string;
+  error?: string;
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const APIFY_API_KEY = Deno.env.get("APIFY_API_KEY");
+    if (!APIFY_API_KEY) throw new Error("APIFY_API_KEY not configured");
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const anonClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!);
+    const { data: { user } } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
+    if (!user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { leads } = await req.json() as { leads: LeadInput[] };
+
+    if (!leads || !Array.isArray(leads) || leads.length === 0) {
+      return new Response(JSON.stringify({ error: "leads array is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (leads.length > MAX_LEADS) {
+      return new Response(JSON.stringify({ error: `Maximum ${MAX_LEADS} leads per batch` }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const itemIds = leads.map((l) => l.itemId);
+    const { data: items, error: fetchErr } = await supabase
+      .from("prospect_list_items")
+      .select("*")
+      .in("id", itemIds)
+      .eq("user_id", user.id);
+
+    if (fetchErr || !items) {
+      return new Response(JSON.stringify({ error: "Failed to fetch items" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const itemMap = new Map(items.map((i: Record<string, unknown>) => [i.id as string, i]));
+
+    // Filter: skip leads that already have phone
+    const eligible: Array<{ input: LeadInput; item: Record<string, unknown> }> = [];
+    for (const lead of leads) {
+      const item = itemMap.get(lead.itemId);
+      if (!item) continue;
+      if (item.phone_checked_at && item.phone) continue;
+      // Require linkedin_url for Apify scraping
+      const linkedinUrl = lead.linkedinUrl || (item.linkedin_url as string) || "";
+      if (!linkedinUrl) continue;
+      eligible.push({ input: lead, item });
+    }
+
+    if (eligible.length === 0) {
+      return new Response(
+        JSON.stringify({ totalProcessed: 0, phonesFound: 0, creditsUsed: 0, message: "No eligible leads" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Credit check
+    const minCredits = eligible.length * CREDIT_COST_PHONE;
+    const { data: balanceData } = await supabase
+      .from("user_credits")
+      .select("balance")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    const currentBalance = balanceData?.balance ?? 0;
+
+    if (currentBalance < minCredits) {
+      return new Response(
+        JSON.stringify({ error: "Créditos insuficientes", required: minCredits, available: currentBalance, eligibleCount: eligible.length }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const results: LeadResult[] = [];
+    let totalCreditsUsed = 0;
+
+    async function processLead(entry: { input: LeadInput; item: Record<string, unknown> }): Promise<LeadResult> {
+      const { input, item } = entry;
+      const result: LeadResult = { itemId: input.itemId, phoneFound: false, status: "done" };
+      const linkedinUrl = input.linkedinUrl || (item.linkedin_url as string) || "";
+
+      try {
+        console.log(`[batch-phone] Starting Apify for ${input.itemId}, url: ${linkedinUrl}`);
+
+        const actorId = "2SyF0bVxmgGr8IVCZ";
+        const actorUrl = `https://api.apify.com/v2/acts/${actorId}/runs?token=${APIFY_API_KEY}`;
+        const apifyStartRes = await fetch(actorUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ startUrls: [{ url: linkedinUrl }], maxItems: 1 }),
+        });
+        const apifyStartData = await apifyStartRes.json();
+        const runId = apifyStartData?.data?.id;
+        const datasetId = apifyStartData?.data?.defaultDatasetId;
+
+        if (!runId) {
+          result.status = "error";
+          result.error = "apify_start_failed";
+          await supabase.from("prospect_list_items").update({
+            enrichment_status: "error",
+            phone_checked_at: new Date().toISOString(),
+            apollo_reason: "apify_start_failed",
+          }).eq("id", input.itemId);
+          return result;
+        }
+
+        // Poll for completion
+        const startTime = Date.now();
+        let foundPhone: string | null = null;
+
+        while (Date.now() - startTime < APIFY_TIMEOUT_MS) {
+          await new Promise((r) => setTimeout(r, APIFY_POLL_INTERVAL_MS));
+          const statusRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_API_KEY}`);
+          const statusData = await statusRes.json();
+          const runStatus = statusData?.data?.status;
+
+          if (runStatus === "SUCCEEDED") {
+            const dsRes = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_API_KEY}`);
+            const dsItems = await dsRes.json();
+            if (Array.isArray(dsItems) && dsItems.length > 0) {
+              const profile = dsItems[0];
+              foundPhone = profile.phone || profile.phones?.[0] || null;
+            }
+            break;
+          } else if (["FAILED", "ABORTED", "TIMED-OUT"].includes(runStatus)) {
+            break;
+          }
+        }
+
+        // Update tracking
+        await supabase.from("prospect_list_items").update({
+          apify_called: true,
+          apify_finished: true,
+          apify_run_id: runId,
+        }).eq("id", input.itemId);
+
+        const updateData: Record<string, unknown> = {
+          phone_checked_at: new Date().toISOString(),
+        };
+
+        if (foundPhone) {
+          updateData.phone = foundPhone;
+          updateData.enrichment_source = "apify";
+          updateData.enrichment_status = "done";
+          result.phoneFound = true;
+          result.phone = foundPhone;
+          result.source = "apify";
+
+          const { data: remaining } = await supabase.rpc("deduct_credits", {
+            p_user_id: user!.id,
+            p_amount: CREDIT_COST_PHONE,
+            p_type: "batch_enrich_phone",
+            p_description: `Telefone encontrado - ${item.name}`,
+            p_reference_id: input.itemId,
+          });
+
+          if (remaining === -1) {
+            delete updateData.phone;
+            result.phoneFound = false;
+            result.status = "credit_error";
+            updateData.enrichment_status = "done";
+            updateData.apollo_reason = "insufficient_credits";
+          } else {
+            totalCreditsUsed += CREDIT_COST_PHONE;
+          }
+        } else {
+          updateData.enrichment_status = "not_found";
+          updateData.apollo_reason = "phone_not_found";
+          result.status = "not_found";
+        }
+
+        await supabase.from("prospect_list_items").update(updateData).eq("id", input.itemId);
+      } catch (err) {
+        console.error(`[batch-phone] Error for ${input.itemId}:`, err);
+        result.status = "error";
+        result.error = err instanceof Error ? err.message : "unknown";
+        await supabase.from("prospect_list_items").update({
+          enrichment_status: "error",
+          phone_checked_at: new Date().toISOString(),
+          apollo_reason: `batch_phone_error: ${result.error}`,
+        }).eq("id", input.itemId);
+      }
+
+      return result;
+    }
+
+    for (let i = 0; i < eligible.length; i += CONCURRENCY) {
+      const batch = eligible.slice(i, i + CONCURRENCY);
+      const batchResults = await Promise.all(batch.map(processLead));
+      results.push(...batchResults);
+    }
+
+    const phonesFound = results.filter((r) => r.phoneFound).length;
+    const summary = {
+      totalProcessed: results.length,
+      phonesFound,
+      creditsUsed: totalCreditsUsed,
+      results,
+    };
+
+    console.log(`[batch-phone] Complete:`, JSON.stringify({ ...summary, results: undefined }));
+
+    return new Response(JSON.stringify(summary), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("[batch-phone] Fatal error:", error);
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});
