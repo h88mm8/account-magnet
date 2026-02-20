@@ -147,11 +147,27 @@ export function useProspectLists() {
     }>
   ) => {
     if (!user) return;
-    const rows = items.map((item) => ({
-      list_id: listId,
-      user_id: user.id,
-      ...item,
-    }));
+    const rows = items.map((item) => {
+      let email = item.email;
+      let phone = item.phone;
+
+      // Protect against email stored in phone field
+      if (phone && phone.includes("@")) {
+        console.warn(`[save-to-list] Phone contains '@', moving to email: ${phone}`);
+        if (!email) {
+          email = phone;
+        }
+        phone = undefined;
+      }
+
+      return {
+        list_id: listId,
+        user_id: user.id,
+        ...item,
+        email,
+        phone,
+      };
+    });
     console.log("[save-to-list] Items being saved:", JSON.stringify(rows.map(r => ({
       name: r.name, linkedin_url: r.linkedin_url, company: r.company, email: r.email, phone: r.phone, provider_id: r.provider_id,
     })), null, 2));

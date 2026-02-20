@@ -146,9 +146,13 @@ export default function Lists() {
     }
   }, [listItems, selectedIds, toast]);
 
+  const hasValidPhone = (phone: string | null | undefined): boolean => {
+    return !!phone && phone.trim() !== "" && !phone.includes("@");
+  };
+
   const handleBatchPhone = useCallback(async () => {
     const eligible = listItems.filter(
-      (i) => selectedIds.has(i.id) && i.item_type === "lead" && !i.phone && i.linkedin_url
+      (i) => selectedIds.has(i.id) && i.item_type === "lead" && !hasValidPhone(i.phone) && i.linkedin_url
     );
 
     if (eligible.length === 0) {
