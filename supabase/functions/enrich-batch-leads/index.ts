@@ -203,6 +203,7 @@ serve(async (req) => {
 
         if (apolloRes.ok) {
           const apolloData = JSON.parse(apolloText);
+          console.log(`[batch] Apollo OK for ${input.itemId}, person keys:`, apolloData.person ? Object.keys(apolloData.person) : "no person");
           const person = apolloData.person;
           if (person) {
             apolloEmail = person.email || person.personal_emails?.[0] || null;
@@ -215,7 +216,7 @@ serve(async (req) => {
             if (!apolloPhone && person.sanitized_phone) apolloPhone = person.sanitized_phone as string;
           }
         } else {
-          console.error(`[batch] Apollo error for ${input.itemId}: ${apolloRes.status}`);
+          console.error(`[batch] Apollo error for ${input.itemId}: ${apolloRes.status} body: ${apolloText.substring(0, 300)}`);
         }
 
         // ====== APIFY FALLBACK (if Apollo found nothing for email) ======
