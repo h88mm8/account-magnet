@@ -162,33 +162,7 @@ export function useProspectLists() {
       await fetchSavedItemKeys();
       invalidateMetrics();
 
-      // Auto-enrich leads that have linkedin_url but no email
-      if (inserted && inserted.length > 0) {
-        const leadsToEnrich = inserted.filter(
-          (i) => i.item_type === "lead" && i.linkedin_url && !i.email
-        );
-        if (leadsToEnrich.length > 0) {
-          console.log(`[auto-enrich] Triggering enrichment for ${leadsToEnrich.length} leads`);
-          // Fire enrichment calls in background (don't await all)
-          for (const lead of leadsToEnrich) {
-            const nameParts = (lead.name || "").split(" ");
-            supabase.functions.invoke("enrich-lead", {
-              body: {
-                itemId: lead.id,
-                searchType: "email",
-                linkedinUrl: lead.linkedin_url,
-                firstName: nameParts[0] || "",
-                lastName: nameParts.slice(1).join(" ") || "",
-                company: lead.company || "",
-              },
-            }).then((res) => {
-              console.log(`[auto-enrich] ${lead.name}:`, res.data);
-            }).catch((err) => {
-              console.error(`[auto-enrich] ${lead.name} error:`, err);
-            });
-          }
-        }
-      }
+      // Auto-enrich removed — use batch enrichment from Lists page instead
     }
   };
 
