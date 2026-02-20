@@ -211,7 +211,80 @@ serve(async (req) => {
       const found = !!email;
 
       if (!found) {
-        // Refund if no email found
+        // ============ APIFY FALLBACK ============
+        console.log("[enrich-lead] Apollo returned no email. Trying Apify fallback...");
+        const APIFY_API_KEY = Deno.env.get("APIFY_API_KEY");
+        const linkedinUrlForApify = linkedinUrl || item.linkedin_url;
+
+        if (APIFY_API_KEY && linkedinUrlForApify) {
+          try {
+            const actorId = "2SyF0bVxmgGr8IVCZ"; // LinkedIn profile scraper
+            const webhookPayload = {
+              itemId,
+              searchType: "email",
+              firstName: resolvedFirst,
+              lastName: resolvedLast,
+              company: resolvedCompany,
+              domain: domain || "",
+            };
+
+            // Start Apify actor run
+            const actorUrl = `https://api.apify.com/v2/acts/${actorId}/runs?token=${APIFY_API_KEY}`;
+            const apifyResponse = await fetch(actorUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                startUrls: [{ url: linkedinUrlForApify }],
+                maxItems: 1,
+              }),
+            });
+
+            const apifyData = await apifyResponse.json();
+            const apifyRunId = apifyData?.data?.id;
+
+            if (apifyRunId) {
+              console.log(`[enrich-lead] Apify run started: ${apifyRunId}`);
+
+              // Register webhook for when run finishes
+              const webhookUrl = `${SUPABASE_URL}/functions/v1/webhooks-apify`;
+              await fetch(`https://api.apify.com/v2/acts/${actorId}/runs/${apifyRunId}/webhooks?token=${APIFY_API_KEY}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  eventTypes: ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.ABORTED", "ACTOR.RUN.TIMED_OUT"],
+                  requestUrl: webhookUrl,
+                  payloadTemplate: JSON.stringify({
+                    runId: "{{resource.id}}",
+                    eventType: "{{event}}",
+                    datasetId: "{{resource.defaultDatasetId}}",
+                    ...webhookPayload,
+                  }),
+                }),
+              });
+
+              // Update item status
+              await supabase
+                .from("prospect_list_items")
+                .update({
+                  enrichment_status: "processing",
+                  apify_called: true,
+                  apify_run_id: apifyRunId,
+                  apollo_called: true,
+                  apollo_reason: "no_email_found_trying_apify",
+                })
+                .eq("id", itemId);
+
+              return new Response(
+                JSON.stringify({ found: false, status: "processing", message: "Apollo sem resultado. Apify em andamento." }),
+                { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+              );
+            }
+          } catch (apifyErr) {
+            console.error("[enrich-lead] Apify fallback error:", apifyErr);
+          }
+        }
+
+        // No Apify or Apify failed to start — refund
         await supabase.rpc("add_credits", {
           p_user_id: user.id,
           p_amount: creditCost,
@@ -230,7 +303,7 @@ serve(async (req) => {
       await supabase.from("prospect_list_items").update(updateData).eq("id", itemId);
 
       return new Response(
-        JSON.stringify({ email, found, source: found ? "apollo" : null, status: "done" }),
+        JSON.stringify({ email, found, source: found ? "apollo" : null, status: found ? "done" : "processing" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     } catch (err) {
