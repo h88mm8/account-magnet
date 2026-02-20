@@ -72,8 +72,7 @@ export default function Lists() {
     }
   };
 
-  const handleBatchEnrich = useCallback(async () => {
-    // Filter eligible items: selected leads without email
+  const handleBatchEmail = useCallback(async () => {
     const eligible = listItems.filter(
       (i) => selectedIds.has(i.id) && i.item_type === "lead" && !i.email
     );
@@ -103,28 +102,22 @@ export default function Lists() {
         };
       });
 
-      const { data, error } = await supabase.functions.invoke("enrich-batch-leads", {
+      const { data, error } = await supabase.functions.invoke("enrich-batch-emails", {
         body: { leads },
       });
 
       if (error) {
-        console.error("Batch enrich error:", error);
-        toast({ title: "Erro no enriquecimento", description: "Tente novamente.", variant: "destructive" });
+        toast({ title: "Erro no enriquecimento de emails", description: "Tente novamente.", variant: "destructive" });
         setBulkRunning(false);
         return;
       }
 
       if (data?.error === "Créditos insuficientes") {
-        toast({
-          title: "Créditos insuficientes",
-          description: `Necessário: ${data.required} | Disponível: ${data.available}`,
-          variant: "destructive",
-        });
+        toast({ title: "Créditos insuficientes", description: `Necessário: ${data.required} | Disponível: ${data.available}`, variant: "destructive" });
         setBulkRunning(false);
         return;
       }
 
-      // Update local items with results
       if (data?.results && Array.isArray(data.results)) {
         setListItems((prev) =>
           prev.map((item) => {
@@ -133,27 +126,93 @@ export default function Lists() {
             return {
               ...item,
               ...(result.email && { email: result.email }),
-              ...(result.phone && { phone: result.phone }),
               enrichment_status: result.status === "done" ? "done" : item.enrichment_status,
               enrichment_source: result.source || item.enrichment_source,
               email_checked_at: new Date().toISOString(),
-              ...(result.phone && { phone_checked_at: new Date().toISOString() }),
             };
           })
         );
       }
 
       setBulkProgress({ done: eligible.length, total: eligible.length });
-
-      toast({
-        title: "Enriquecimento concluído!",
-        description: `${data.emailsFound} emails e ${data.phonesFound} telefones encontrados. ${data.creditsUsed} créditos usados.`,
-      });
-
+      toast({ title: "Busca de emails concluída!", description: `${data.emailsFound} emails encontrados. ${data.creditsUsed} créditos usados.` });
       setSelectedIds(new Set());
     } catch (err) {
-      console.error("Batch enrich error:", err);
-      toast({ title: "Erro no enriquecimento", variant: "destructive" });
+      console.error("Batch email error:", err);
+      toast({ title: "Erro na busca de emails", variant: "destructive" });
+    } finally {
+      setBulkRunning(false);
+    }
+  }, [listItems, selectedIds, toast]);
+
+  const handleBatchPhone = useCallback(async () => {
+    const eligible = listItems.filter(
+      (i) => selectedIds.has(i.id) && i.item_type === "lead" && !i.phone && i.linkedin_url
+    );
+
+    if (eligible.length === 0) {
+      toast({ title: "Nenhum contato elegível", description: "Todos os selecionados já possuem telefone, não são leads ou não possuem LinkedIn." });
+      return;
+    }
+
+    if (eligible.length > 100) {
+      toast({ title: "Limite excedido", description: "Selecione no máximo 100 leads por vez.", variant: "destructive" });
+      return;
+    }
+
+    setBulkRunning(true);
+    setBulkProgress({ done: 0, total: eligible.length });
+
+    try {
+      const leads = eligible.map((item) => {
+        const nameParts = item.name.split(" ");
+        return {
+          itemId: item.id,
+          linkedinUrl: item.linkedin_url || undefined,
+          firstName: nameParts[0] || "",
+          lastName: nameParts.slice(1).join(" ") || "",
+          company: item.company || "",
+        };
+      });
+
+      const { data, error } = await supabase.functions.invoke("enrich-batch-phones", {
+        body: { leads },
+      });
+
+      if (error) {
+        toast({ title: "Erro na busca de telefones", description: "Tente novamente.", variant: "destructive" });
+        setBulkRunning(false);
+        return;
+      }
+
+      if (data?.error === "Créditos insuficientes") {
+        toast({ title: "Créditos insuficientes", description: `Necessário: ${data.required} | Disponível: ${data.available}`, variant: "destructive" });
+        setBulkRunning(false);
+        return;
+      }
+
+      if (data?.results && Array.isArray(data.results)) {
+        setListItems((prev) =>
+          prev.map((item) => {
+            const result = data.results.find((r: { itemId: string }) => r.itemId === item.id);
+            if (!result) return item;
+            return {
+              ...item,
+              ...(result.phone && { phone: result.phone }),
+              enrichment_status: result.status === "done" ? "done" : item.enrichment_status,
+              enrichment_source: result.source || item.enrichment_source,
+              phone_checked_at: new Date().toISOString(),
+            };
+          })
+        );
+      }
+
+      setBulkProgress({ done: eligible.length, total: eligible.length });
+      toast({ title: "Busca de telefones concluída!", description: `${data.phonesFound} telefones encontrados. ${data.creditsUsed} créditos usados.` });
+      setSelectedIds(new Set());
+    } catch (err) {
+      console.error("Batch phone error:", err);
+      toast({ title: "Erro na busca de telefones", variant: "destructive" });
     } finally {
       setBulkRunning(false);
     }
@@ -381,14 +440,28 @@ export default function Lists() {
               variant="outline"
               className="h-8 gap-1.5 text-xs"
               disabled={bulkRunning}
-              onClick={() => handleBatchEnrich()}
+              onClick={() => handleBatchEmail()}
             >
               {bulkRunning ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
                 <Mail className="h-3.5 w-3.5" />
               )}
-              Enriquecer Leads ({selectedIds.size})
+              Buscar Email ({selectedIds.size})
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5 text-xs"
+              disabled={bulkRunning}
+              onClick={() => handleBatchPhone()}
+            >
+              {bulkRunning ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Phone className="h-3.5 w-3.5" />
+              )}
+              Buscar Telefone ({selectedIds.size})
             </Button>
             <Button
               size="sm"
