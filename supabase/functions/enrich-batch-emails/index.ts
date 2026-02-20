@@ -162,7 +162,16 @@ serve(async (req) => {
         if (company) apolloBody.organization_name = company;
         if (domain) apolloBody.domain = domain;
 
-        console.log(`[batch-email] Apollo payload for ${input.itemId}:`, JSON.stringify(apolloBody));
+        console.log(`[batch-email] Apollo payload for ${input.itemId}:`, JSON.stringify(apolloBody, null, 2));
+        console.log(`[batch-email] DB item snapshot for ${input.itemId}:`, JSON.stringify({
+          name: item.name,
+          company: item.company,
+          linkedin_url: item.linkedin_url,
+          title: item.title,
+          location: item.location,
+          email: item.email,
+          enrichment_status: item.enrichment_status,
+        }));
 
         const apolloRes = await fetch("https://api.apollo.io/api/v1/people/match", {
           method: "POST",
@@ -171,16 +180,27 @@ serve(async (req) => {
         });
 
         const apolloText = await apolloRes.text();
+        console.log(`[batch-email] Apollo status for ${input.itemId}: ${apolloRes.status}`);
+        console.log(`[batch-email] Apollo response for ${input.itemId}: ${apolloText.substring(0, 500)}`);
+
         let foundEmail: string | null = null;
 
         if (apolloRes.ok) {
           const apolloData = JSON.parse(apolloText);
           const person = apolloData.person;
+          console.log(`[batch-email] person found for ${input.itemId}:`, person ? JSON.stringify({
+            id: person.id,
+            first_name: person.first_name,
+            last_name: person.last_name,
+            email: person.email,
+            personal_emails: person.personal_emails,
+            organization_name: person.organization_name,
+          }) : "null");
           if (person) {
             foundEmail = person.email || person.personal_emails?.[0] || null;
           }
         } else {
-          console.error(`[batch-email] Apollo error for ${input.itemId}: ${apolloRes.status} ${apolloText.substring(0, 300)}`);
+          console.error(`[batch-email] Apollo error for ${input.itemId}: ${apolloRes.status} ${apolloText.substring(0, 500)}`);
         }
 
         // Save results
@@ -220,7 +240,13 @@ serve(async (req) => {
           result.status = "not_found";
         }
 
-        await supabase.from("prospect_list_items").update(updateData).eq("id", input.itemId);
+        console.log(`[batch-email] DB update for ${input.itemId}:`, JSON.stringify(updateData));
+        const { error: updateErr } = await supabase.from("prospect_list_items").update(updateData).eq("id", input.itemId);
+        if (updateErr) {
+          console.error(`[batch-email] DB update ERROR for ${input.itemId}:`, updateErr.message);
+        } else {
+          console.log(`[batch-email] DB update SUCCESS for ${input.itemId}`);
+        }
       } catch (err) {
         console.error(`[batch-email] Error for ${input.itemId}:`, err);
         result.status = "error";
