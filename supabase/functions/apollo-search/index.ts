@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,13 +11,9 @@ const APOLLO_BASE = "https://api.apollo.io/api/v1";
 
 /** Resolve email from all possible Apollo payload locations */
 function resolveEmail(p: Record<string, unknown>): string {
-  // 1. Direct email field
   if (p.email && typeof p.email === "string" && p.email.includes("@")) return p.email;
-
-  // 2. email_addresses array (object with .email property)
   const emailAddresses = p.email_addresses as Array<Record<string, unknown>> | undefined;
   if (Array.isArray(emailAddresses) && emailAddresses.length > 0) {
-    // Prefer work/personal type first
     const preferred = emailAddresses.find(
       (e) => e.type === "personal" || e.type === "work" || e.type === "professional"
     );
@@ -24,8 +21,6 @@ function resolveEmail(p: Record<string, unknown>): string {
     const val = (candidate?.email || candidate?.value || candidate?.address) as string | undefined;
     if (val && val.includes("@")) return val;
   }
-
-  // 3. emails array (plain strings)
   const emails = p.emails as unknown[] | undefined;
   if (Array.isArray(emails) && emails.length > 0) {
     const first = emails[0];
@@ -35,43 +30,27 @@ function resolveEmail(p: Record<string, unknown>): string {
       if (val && val.includes("@")) return val;
     }
   }
-
   return "";
 }
 
 /** Resolve phone from all possible Apollo payload locations */
 function resolvePhone(p: Record<string, unknown>): string {
-  // 1. primary_phone object – Apollo v1 most common
   const primaryPhone = p.primary_phone as Record<string, unknown> | undefined;
   if (primaryPhone) {
-    const num =
-      (primaryPhone.sanitized_number as string) ||
-      (primaryPhone.number as string) ||
-      (primaryPhone.raw_number as string);
+    const num = (primaryPhone.sanitized_number as string) || (primaryPhone.number as string) || (primaryPhone.raw_number as string);
     if (num) return num;
   }
-
-  // 2. sanitized_phone direct field
   if (p.sanitized_phone && typeof p.sanitized_phone === "string") return p.sanitized_phone as string;
-
-  // 3. phone direct field
   if (p.phone && typeof p.phone === "string") return p.phone as string;
-
-  // 4. phone_numbers array
   const phoneNumbers = p.phone_numbers as Array<Record<string, unknown>> | undefined;
   if (Array.isArray(phoneNumbers) && phoneNumbers.length > 0) {
-    // Prefer mobile/personal type
     const preferred = phoneNumbers.find(
       (ph) => ph.type === "mobile" || ph.type === "personal" || ph.type === "work_hq"
     );
     const candidate = preferred || phoneNumbers[0];
-    const num =
-      (candidate?.sanitized_number as string) ||
-      (candidate?.number as string) ||
-      (candidate?.raw_number as string);
+    const num = (candidate?.sanitized_number as string) || (candidate?.number as string) || (candidate?.raw_number as string);
     if (num) return num;
   }
-
   return "";
 }
 
@@ -89,6 +68,23 @@ serve(async (req) => {
       );
     }
 
+    // ── Auth + Supabase client ──
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const authHeader = req.headers.get("Authorization");
+
+    let userId: string | null = null;
+    let supabase: ReturnType<typeof createClient> | null = null;
+
+    if (authHeader) {
+      const anonClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!);
+      const { data: { user } } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
+      if (user) {
+        userId = user.id;
+        supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      }
+    }
+
     const body = await req.json();
     const {
       searchType = "people",
@@ -104,7 +100,25 @@ serve(async (req) => {
       q_organization_name,
     } = body;
 
-    // Always cap at 100 results (Apollo max)
+    // ── Credit check: 1 credit per search page ──
+    const SEARCH_PAGE_COST = 1;
+    if (userId && supabase) {
+      const { data: remaining } = await supabase.rpc("deduct_credits", {
+        p_user_id: userId,
+        p_amount: SEARCH_PAGE_COST,
+        p_type: "search_page",
+        p_description: `Busca ${searchType} página ${page}`,
+      });
+
+      if (remaining === -1) {
+        return new Response(
+          JSON.stringify({ error: "Créditos insuficientes", items: [], pagination: { page: 1, total_pages: 0, total_entries: 0 } }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      console.log(`[credits] Deducted ${SEARCH_PAGE_COST} for search_page. Remaining: ${remaining}`);
+    }
+
     const apolloBody: Record<string, unknown> = {
       page,
       per_page: Math.min(per_page, 100),
@@ -144,6 +158,16 @@ serve(async (req) => {
 
     if (!response.ok) {
       console.error("[apollo-search] API error:", response.status, JSON.stringify(data));
+      // Refund the credit on API error
+      if (userId && supabase) {
+        await supabase.rpc("add_credits", {
+          p_user_id: userId,
+          p_amount: SEARCH_PAGE_COST,
+          p_type: "refund_search",
+          p_description: `Reembolso busca ${searchType} - erro API ${response.status}`,
+        });
+        console.log(`[credits] Refunded ${SEARCH_PAGE_COST} due to API error`);
+      }
       return new Response(
         JSON.stringify({
           error: data.message || `Apollo API error: ${response.status}`,
@@ -156,22 +180,18 @@ serve(async (req) => {
 
     if (searchType === "companies") {
       const organizations = data.organizations || data.accounts || [];
-
-      // Log first record raw to inspect available fields
       if (organizations.length > 0) {
         const sample = organizations[0] as Record<string, unknown>;
         console.log("[apollo-search] company sample keys:", Object.keys(sample).join(", "));
       }
 
       const items = organizations.map((org: Record<string, unknown>) => {
-        // Phone for companies
         const orgPhone =
           (org.sanitized_phone as string) ||
           (org.phone as string) ||
           ((org.primary_phone as Record<string, unknown>)?.sanitized_number as string) ||
           ((org.primary_phone as Record<string, unknown>)?.number as string) ||
           "";
-
         return {
           name: (org.name as string) || "",
           industry: (org.industry as string) || "",
@@ -202,27 +222,15 @@ serve(async (req) => {
       );
     } else {
       const people = data.people || data.contacts || [];
-
-      // Log first record raw to inspect available fields
       if (people.length > 0) {
         const sample = people[0] as Record<string, unknown>;
         console.log("[apollo-search] person sample keys:", Object.keys(sample).join(", "));
-        console.log("[apollo-search] person email fields:", JSON.stringify({
-          email: sample.email,
-          emails: sample.emails,
-          email_addresses: sample.email_addresses,
-          sanitized_phone: sample.sanitized_phone,
-          primary_phone: sample.primary_phone,
-          phone_numbers: sample.phone_numbers,
-          phone: sample.phone,
-        }));
       }
 
       const items = people.map((p: Record<string, unknown>) => {
         const org = p.organization as Record<string, unknown> | undefined;
         const email = resolveEmail(p);
         const phoneNumber = resolvePhone(p);
-
         return {
           firstName: (p.first_name as string) || "",
           lastName: (p.last_name as string) || "",

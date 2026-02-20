@@ -1,6 +1,7 @@
-import { Search, BarChart3, Settings, HelpCircle, List, Send, LogOut } from "lucide-react";
+import { Search, BarChart3, Settings, HelpCircle, List, Send, LogOut, Coins } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCredits } from "@/hooks/useCredits";
 import {
   Sidebar,
   SidebarContent,
@@ -27,6 +28,7 @@ const secondaryNav = [
 
 export function AppSidebar() {
   const { signOut } = useAuth();
+  const { balance } = useCredits();
 
   return (
     <Sidebar className="border-r border-border">
@@ -42,6 +44,13 @@ export function AppSidebar() {
 
       <SidebarContent>
         <SidebarGroup>
+          <div className="mx-3 mb-3 flex items-center gap-2 rounded-lg bg-accent/50 px-3 py-2">
+            <Coins className="h-4 w-4 text-primary" />
+            <div className="flex flex-col">
+              <span className="text-xs text-muted-foreground">Créditos</span>
+              <span className="text-sm font-semibold text-foreground">{balance.toLocaleString("pt-BR")}</span>
+            </div>
+          </div>
           <SidebarGroupLabel className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
             Menu
           </SidebarGroupLabel>

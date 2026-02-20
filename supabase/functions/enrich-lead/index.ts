@@ -7,6 +7,9 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const CREDIT_COST_EMAIL = 1;
+const CREDIT_COST_WHATSAPP = 8;
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -19,7 +22,6 @@ serve(async (req) => {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // Auth check
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -30,9 +32,7 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const anonClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!);
-    const {
-      data: { user },
-    } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
+    const { data: { user } } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
     if (!user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
@@ -40,8 +40,7 @@ serve(async (req) => {
       });
     }
 
-    const { itemId, searchType, linkedinUrl, firstName, lastName, company, domain } =
-      await req.json();
+    const { itemId, searchType, linkedinUrl, firstName, lastName, company, domain } = await req.json();
 
     if (!itemId || !searchType) {
       return new Response(
@@ -65,7 +64,7 @@ serve(async (req) => {
       });
     }
 
-    // ============ ANTI-REPROCESSING CHECK ============
+    // ============ ANTI-REPROCESSING CHECK (no credit consumed) ============
     const checkedAtField = searchType === "email" ? "email_checked_at" : "phone_checked_at";
     if (item[checkedAtField]) {
       const dataField = searchType === "email" ? "email" : "phone";
@@ -80,6 +79,24 @@ serve(async (req) => {
       );
     }
 
+    // ============ CREDIT CHECK ============
+    const creditCost = searchType === "email" ? CREDIT_COST_EMAIL : CREDIT_COST_WHATSAPP;
+    const { data: remaining } = await supabase.rpc("deduct_credits", {
+      p_user_id: user.id,
+      p_amount: creditCost,
+      p_type: searchType === "email" ? "email_enrich" : "whatsapp_enrich",
+      p_description: `Enriquecimento ${searchType} - ${item.name}`,
+      p_reference_id: itemId,
+    });
+
+    if (remaining === -1) {
+      return new Response(
+        JSON.stringify({ error: "Créditos insuficientes", found: false, status: "error" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    console.log(`[credits] Deducted ${creditCost} for ${searchType}_enrich. Remaining: ${remaining}`);
+
     // ============ CONCURRENCY LOCK ============
     const { error: lockError, data: lockData } = await supabase
       .from("prospect_list_items")
@@ -93,6 +110,13 @@ serve(async (req) => {
       .single();
 
     if (lockError || !lockData) {
+      // Refund since we couldn't lock
+      await supabase.rpc("add_credits", {
+        p_user_id: user.id,
+        p_amount: creditCost,
+        p_type: "refund_enrich",
+        p_description: `Reembolso ${searchType} - já em processamento`,
+      });
       return new Response(
         JSON.stringify({
           alreadyChecked: true,
@@ -111,7 +135,14 @@ serve(async (req) => {
     const hasStrongIdentifiers = !!(resolvedFirst && resolvedLast && (resolvedCompany || domain));
 
     if (!hasStrongIdentifiers) {
-      console.warn("Apollo skipped: no strong identifiers (name+org/domain required)");
+      console.warn("Apollo skipped: no strong identifiers");
+      // Refund credit since we can't even attempt enrichment
+      await supabase.rpc("add_credits", {
+        p_user_id: user.id,
+        p_amount: creditCost,
+        p_type: "refund_enrich",
+        p_description: `Reembolso ${searchType} - identificadores insuficientes`,
+      });
       await supabase
         .from("prospect_list_items")
         .update({
@@ -132,7 +163,6 @@ serve(async (req) => {
 
     try {
       if (searchType === "phone") {
-        // Phone enrichment is ASYNC — Apollo requires webhook_url
         const webhookBaseUrl = `${SUPABASE_URL}/functions/v1/webhooks-apollo`;
         const webhookUrl = `${webhookBaseUrl}?itemId=${encodeURIComponent(itemId)}&searchType=phone`;
 
@@ -146,28 +176,25 @@ serve(async (req) => {
         if (domain) apolloBody.domain = domain;
         if (item.email) apolloBody.email = item.email;
 
-        console.log("Apollo /people/match (phone async) payload:", JSON.stringify(apolloBody));
-
         const response = await fetch("https://api.apollo.io/api/v1/people/match", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": APOLLO_API_KEY,
-          },
+          headers: { "Content-Type": "application/json", "x-api-key": APOLLO_API_KEY },
           body: JSON.stringify(apolloBody),
         });
 
         const responseText = await response.text();
-        console.log("Apollo phone response status:", response.status);
-
         if (!response.ok) {
+          // Refund on API error
+          await supabase.rpc("add_credits", {
+            p_user_id: user.id,
+            p_amount: creditCost,
+            p_type: "refund_enrich",
+            p_description: `Reembolso ${searchType} - erro API Apollo`,
+          });
           throw new Error(`Apollo match error [${response.status}]: ${responseText}`);
         }
 
-        // Apollo accepted — webhook will deliver phone data later
-        // Keep status as "processing" — webhook will set "done"
         console.log("Apollo phone enrichment dispatched, waiting for webhook");
-
         return new Response(
           JSON.stringify({ found: false, status: "processing", message: "Aguardando resultado do Apollo via webhook" }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -183,6 +210,16 @@ serve(async (req) => {
       const email = apolloResult?.email || null;
       const found = !!email;
 
+      if (!found) {
+        // Refund if no email found
+        await supabase.rpc("add_credits", {
+          p_user_id: user.id,
+          p_amount: creditCost,
+          p_type: "refund_enrich",
+          p_description: `Reembolso email - nenhum resultado encontrado`,
+        });
+      }
+
       const updateData: Record<string, unknown> = {
         enrichment_status: "done",
         apollo_called: true,
@@ -191,8 +228,6 @@ serve(async (req) => {
       if (email) { updateData.email = email; updateData.enrichment_source = "apollo"; }
 
       await supabase.from("prospect_list_items").update(updateData).eq("id", itemId);
-
-      console.log("Apollo result:", { email, found });
 
       return new Response(
         JSON.stringify({ email, found, source: found ? "apollo" : null, status: "done" }),
@@ -228,57 +263,29 @@ serve(async (req) => {
   }
 });
 
-// =============================================
-// Apollo: People Match (scoped by searchType)
-// =============================================
 async function enrichWithApollo(
-  params: {
-    firstName?: string;
-    lastName?: string;
-    company?: string;
-    domain?: string;
-    email?: string | null;
-  },
+  params: { firstName?: string; lastName?: string; company?: string; domain?: string; email?: string | null },
   apiKey: string
 ): Promise<{ email?: string } | null> {
-  const body: Record<string, unknown> = {
-    reveal_personal_emails: true,
-  };
-
+  const body: Record<string, unknown> = { reveal_personal_emails: true };
   if (params.firstName) body.first_name = params.firstName;
   if (params.lastName) body.last_name = params.lastName;
   if (params.company) body.organization_name = params.company;
   if (params.domain) body.domain = params.domain;
   if (params.email) body.email = params.email;
 
-  console.log("Apollo /people/match payload:", JSON.stringify(body));
-
   const response = await fetch("https://api.apollo.io/api/v1/people/match", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-    },
+    headers: { "Content-Type": "application/json", "x-api-key": apiKey },
     body: JSON.stringify(body),
   });
 
   const responseText = await response.text();
-  console.log("Apollo response status:", response.status);
-
-  if (!response.ok) {
-    throw new Error(`Apollo match error [${response.status}]: ${responseText}`);
-  }
+  if (!response.ok) throw new Error(`Apollo match error [${response.status}]: ${responseText}`);
 
   const data = JSON.parse(responseText);
   const person = data.person;
-  if (!person) {
-    console.log("Apollo: no match found");
-    return null;
-  }
+  if (!person) return null;
 
-  console.log("Apollo matched person:", person.id, person.name);
-
-  return {
-    email: person.email || person.personal_emails?.[0] || null,
-  };
+  return { email: person.email || person.personal_emails?.[0] || null };
 }
