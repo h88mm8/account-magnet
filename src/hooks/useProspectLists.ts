@@ -150,6 +150,9 @@ export function useProspectLists() {
       user_id: user.id,
       ...item,
     }));
+    console.log("[save-to-list] Items being saved:", JSON.stringify(rows.map(r => ({
+      name: r.name, linkedin_url: r.linkedin_url, company: r.company, email: r.email, phone: r.phone,
+    })), null, 2));
     const { data: inserted, error } = await supabase
       .from("prospect_list_items")
       .insert(rows)

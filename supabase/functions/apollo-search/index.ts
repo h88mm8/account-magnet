@@ -245,13 +245,32 @@ serve(async (req) => {
         }));
       }
 
+      // Log full sample of first person for debugging
+      if (people.length > 0) {
+        const s = people[0] as Record<string, unknown>;
+        console.log("[apollo-search] FULL person[0] fields:", JSON.stringify({
+          first_name: s.first_name,
+          last_name: s.last_name,
+          last_name_obfuscated: s.last_name_obfuscated,
+          linkedin_url: s.linkedin_url,
+          title: s.title,
+          headline: s.headline,
+          organization: s.organization,
+          organization_name: s.organization_name,
+          city: s.city,
+          state: s.state,
+          country: s.country,
+          id: s.id,
+        }, null, 2));
+      }
+
       const items = people.map((p: Record<string, unknown>) => {
         const org = p.organization as Record<string, unknown> | undefined;
         const email = resolveEmail(p);
         const phoneNumber = resolvePhone(p);
         return {
           firstName: (p.first_name as string) || "",
-          lastName: (p.last_name as string) || "",
+          lastName: (p.last_name as string) || (p.last_name_obfuscated as string) || "",
           title: (p.title as string) || (p.headline as string) || "",
           company: (org?.name as string) || (p.organization_name as string) || "",
           location: [p.city, p.state, p.country].filter(Boolean).join(", "),
