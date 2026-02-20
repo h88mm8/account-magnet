@@ -12,6 +12,12 @@ const APOLLO_BASE = "https://api.apollo.io/api/v1";
 /** Resolve email from all possible Apollo payload locations */
 function resolveEmail(p: Record<string, unknown>): string {
   if (p.email && typeof p.email === "string" && p.email.includes("@")) return p.email;
+  // reveal_personal_emails returns this array
+  const personalEmails = p.personal_emails as string[] | undefined;
+  if (Array.isArray(personalEmails) && personalEmails.length > 0) {
+    const first = personalEmails[0];
+    if (typeof first === "string" && first.includes("@")) return first;
+  }
   const emailAddresses = p.email_addresses as Array<Record<string, unknown>> | undefined;
   if (Array.isArray(emailAddresses) && emailAddresses.length > 0) {
     const preferred = emailAddresses.find(
@@ -133,7 +139,9 @@ serve(async (req) => {
       if (organization_locations?.length) apolloBody.organization_locations = organization_locations;
       if (organization_num_employees_ranges?.length) apolloBody.organization_num_employees_ranges = organization_num_employees_ranges;
     } else {
-      url = `${APOLLO_BASE}/mixed_people/api_search`;
+      url = `${APOLLO_BASE}/mixed_people/search`;
+      apolloBody.reveal_personal_emails = true;
+      apolloBody.reveal_phone_number = true;
       if (q_keywords) apolloBody.q_keywords = q_keywords;
       if (person_titles?.length) apolloBody.person_titles = person_titles;
       if (person_locations?.length) apolloBody.person_locations = person_locations;
@@ -225,6 +233,18 @@ serve(async (req) => {
       if (people.length > 0) {
         const sample = people[0] as Record<string, unknown>;
         console.log("[apollo-search] person sample keys:", Object.keys(sample).join(", "));
+        console.log("[apollo-search] person sample email fields:", JSON.stringify({
+          email: sample.email,
+          personal_emails: sample.personal_emails,
+          email_addresses: sample.email_addresses,
+          emails: sample.emails,
+        }));
+        console.log("[apollo-search] person sample phone fields:", JSON.stringify({
+          phone: sample.phone,
+          sanitized_phone: sample.sanitized_phone,
+          primary_phone: sample.primary_phone,
+          phone_numbers: sample.phone_numbers,
+        }));
       }
 
       const items = people.map((p: Record<string, unknown>) => {
