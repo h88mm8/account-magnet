@@ -139,9 +139,7 @@ serve(async (req) => {
       if (organization_locations?.length) apolloBody.organization_locations = organization_locations;
       if (organization_num_employees_ranges?.length) apolloBody.organization_num_employees_ranges = organization_num_employees_ranges;
     } else {
-      url = `${APOLLO_BASE}/mixed_people/search`;
-      apolloBody.reveal_personal_emails = true;
-      apolloBody.reveal_phone_number = true;
+      url = `${APOLLO_BASE}/mixed_people/api_search`;
       if (q_keywords) apolloBody.q_keywords = q_keywords;
       if (person_titles?.length) apolloBody.person_titles = person_titles;
       if (person_locations?.length) apolloBody.person_locations = person_locations;
@@ -150,7 +148,7 @@ serve(async (req) => {
       if (organization_num_employees_ranges?.length) apolloBody.organization_num_employees_ranges = organization_num_employees_ranges;
     }
 
-    console.log(`[apollo-search] type=${searchType} page=${page} per_page=${apolloBody.per_page}`);
+    console.log(`[apollo-search] type=${searchType} url=${url} body:`, JSON.stringify(apolloBody, null, 2));
 
     const response = await fetch(url, {
       method: "POST",
