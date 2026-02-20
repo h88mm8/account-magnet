@@ -44,3 +44,6 @@ verify_jwt = false
 
 [functions.unipile-webhook]
 verify_jwt = false
+
+[functions.enrich-batch-leads]
+verify_jwt = false

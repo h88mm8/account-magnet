@@ -46,13 +46,12 @@ export default function Lists() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [editItem, setEditItem] = useState<ProspectListItem | null>(null);
   const [editOpen, setEditOpen] = useState(false);
-  const bulkAbortRef = useRef(false);
+  // bulkAbortRef removed — batch is server-side now
 
   // Reset selection when switching lists
   useEffect(() => {
     setSelectedIds(new Set());
     setBulkRunning(false);
-    bulkAbortRef.current = false;
   }, [selectedListId]);
 
   const toggleSelect = (id: string) => {
@@ -73,45 +72,91 @@ export default function Lists() {
     }
   };
 
-  const handleBulkEnrich = useCallback(async (searchType: "email" | "phone") => {
-    const checkedField = searchType === "email" ? "email_checked_at" : "phone_checked_at";
-    const dataField = searchType === "email" ? "email" : "phone";
-
-    // Filter eligible items: selected, lead type, not already checked/has data
+  const handleBatchEnrich = useCallback(async () => {
+    // Filter eligible items: selected leads without email
     const eligible = listItems.filter(
-      (i) => selectedIds.has(i.id) && i.item_type === "lead" && !i[checkedField] && !i[dataField]
+      (i) => selectedIds.has(i.id) && i.item_type === "lead" && !i.email
     );
 
     if (eligible.length === 0) {
-      toast({ title: "Nenhum contato elegível", description: "Todos os selecionados já foram verificados ou já possuem o dado." });
+      toast({ title: "Nenhum contato elegível", description: "Todos os selecionados já possuem email ou não são leads." });
+      return;
+    }
+
+    if (eligible.length > 100) {
+      toast({ title: "Limite excedido", description: "Selecione no máximo 100 leads por vez.", variant: "destructive" });
       return;
     }
 
     setBulkRunning(true);
-    bulkAbortRef.current = false;
     setBulkProgress({ done: 0, total: eligible.length });
 
-    const BATCH_SIZE = 3;
-    const DELAY_MS = 1000;
+    try {
+      const leads = eligible.map((item) => {
+        const nameParts = item.name.split(" ");
+        return {
+          itemId: item.id,
+          linkedinUrl: item.linkedin_url || undefined,
+          firstName: nameParts[0] || "",
+          lastName: nameParts.slice(1).join(" ") || "",
+          company: item.company || "",
+        };
+      });
 
-    for (let i = 0; i < eligible.length; i += BATCH_SIZE) {
-      if (bulkAbortRef.current) break;
+      const { data, error } = await supabase.functions.invoke("enrich-batch-leads", {
+        body: { leads },
+      });
 
-      const batch = eligible.slice(i, i + BATCH_SIZE);
-      await Promise.all(batch.map((item) => handleEnrich(item, searchType)));
-      setBulkProgress({ done: Math.min(i + BATCH_SIZE, eligible.length), total: eligible.length });
-
-      // Rate limit delay between batches
-      if (i + BATCH_SIZE < eligible.length && !bulkAbortRef.current) {
-        await new Promise((r) => setTimeout(r, DELAY_MS));
+      if (error) {
+        console.error("Batch enrich error:", error);
+        toast({ title: "Erro no enriquecimento", description: "Tente novamente.", variant: "destructive" });
+        setBulkRunning(false);
+        return;
       }
-    }
 
-    setBulkRunning(false);
-    if (!bulkAbortRef.current) {
-      toast({ title: "Busca em massa concluída!", description: `${eligible.length} contato(s) processado(s).` });
+      if (data?.error === "Créditos insuficientes") {
+        toast({
+          title: "Créditos insuficientes",
+          description: `Necessário: ${data.required} | Disponível: ${data.available}`,
+          variant: "destructive",
+        });
+        setBulkRunning(false);
+        return;
+      }
+
+      // Update local items with results
+      if (data?.results && Array.isArray(data.results)) {
+        setListItems((prev) =>
+          prev.map((item) => {
+            const result = data.results.find((r: { itemId: string }) => r.itemId === item.id);
+            if (!result) return item;
+            return {
+              ...item,
+              ...(result.email && { email: result.email }),
+              ...(result.phone && { phone: result.phone }),
+              enrichment_status: result.status === "done" ? "done" : item.enrichment_status,
+              enrichment_source: result.source || item.enrichment_source,
+              email_checked_at: new Date().toISOString(),
+              ...(result.phone && { phone_checked_at: new Date().toISOString() }),
+            };
+          })
+        );
+      }
+
+      setBulkProgress({ done: eligible.length, total: eligible.length });
+
+      toast({
+        title: "Enriquecimento concluído!",
+        description: `${data.emailsFound} emails e ${data.phonesFound} telefones encontrados. ${data.creditsUsed} créditos usados.`,
+      });
+
+      setSelectedIds(new Set());
+    } catch (err) {
+      console.error("Batch enrich error:", err);
+      toast({ title: "Erro no enriquecimento", variant: "destructive" });
+    } finally {
+      setBulkRunning(false);
     }
-    setSelectedIds(new Set());
   }, [listItems, selectedIds, toast]);
 
   // Realtime subscription for async phone enrichment (Apollo webhook)
@@ -336,31 +381,15 @@ export default function Lists() {
               variant="outline"
               className="h-8 gap-1.5 text-xs"
               disabled={bulkRunning}
-              onClick={() => handleBulkEnrich("email")}
+              onClick={() => handleBatchEnrich()}
             >
-              <Mail className="h-3.5 w-3.5" />
-              Buscar Email ({selectedIds.size})
+              {bulkRunning ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Mail className="h-3.5 w-3.5" />
+              )}
+              Enriquecer Leads ({selectedIds.size})
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 gap-1.5 text-xs"
-              disabled={bulkRunning}
-              onClick={() => handleBulkEnrich("phone")}
-            >
-              <Phone className="h-3.5 w-3.5" />
-              Buscar Celular ({selectedIds.size})
-            </Button>
-            {bulkRunning && (
-              <Button
-                size="sm"
-                variant="destructive"
-                className="h-8 text-xs"
-                onClick={() => { bulkAbortRef.current = true; }}
-              >
-                Cancelar
-              </Button>
-            )}
             <Button
               size="sm"
               variant="ghost"
