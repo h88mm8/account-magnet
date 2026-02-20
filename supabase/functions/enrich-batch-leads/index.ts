@@ -180,10 +180,9 @@ serve(async (req) => {
           return result;
         }
 
-        // ====== APOLLO ENRICHMENT (email + phone) ======
+        // ====== APOLLO ENRICHMENT (email only - sync) ======
         const apolloBody: Record<string, unknown> = {
           reveal_personal_emails: true,
-          reveal_phone_number: true,
         };
         if (firstName) apolloBody.first_name = firstName;
         if (lastName) apolloBody.last_name = lastName;
@@ -203,11 +202,10 @@ serve(async (req) => {
 
         if (apolloRes.ok) {
           const apolloData = JSON.parse(apolloText);
-          console.log(`[batch] Apollo OK for ${input.itemId}, person keys:`, apolloData.person ? Object.keys(apolloData.person) : "no person");
           const person = apolloData.person;
           if (person) {
             apolloEmail = person.email || person.personal_emails?.[0] || null;
-            // Extract phone
+            // Phone may come even without reveal_phone_number
             const phones = person.phone_numbers;
             if (Array.isArray(phones) && phones.length > 0) {
               const mobile = phones.find((p: Record<string, unknown>) => p.type === "mobile");
