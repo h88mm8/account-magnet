@@ -62,6 +62,7 @@ export function LeadResultsTable({ results, isLoading }: Props) {
         linkedin_url: r.linkedinUrl,
         email: r.email || undefined,
         phone: r.phoneNumber || undefined,
+        provider_id: r.apolloId || undefined,
       };
     });
   };

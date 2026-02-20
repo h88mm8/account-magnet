@@ -18,6 +18,7 @@ interface LeadInput {
   lastName?: string;
   company?: string;
   domain?: string;
+  apolloId?: string;
 }
 
 interface LeadResult {
@@ -139,8 +140,9 @@ serve(async (req) => {
         const firstName = input.firstName || (item.name as string)?.split(" ")[0] || "";
         const lastName = input.lastName || (item.name as string)?.split(" ").slice(1).join(" ") || "";
         const linkedinUrl = input.linkedinUrl || (item.linkedin_url as string) || "";
+        const apolloId = input.apolloId || (item.provider_id as string) || "";
 
-        if (!firstName && !lastName && !linkedinUrl) {
+        if (!firstName && !lastName && !linkedinUrl && !apolloId) {
           result.status = "skipped";
           result.error = "no_identifiers";
           await supabase.from("prospect_list_items").update({
@@ -150,17 +152,21 @@ serve(async (req) => {
           return result;
         }
 
-        // Build Apollo /people/match body — ONLY email reveal
+        // Build Apollo /people/match body — prefer apolloId for exact match
         const apolloBody: Record<string, unknown> = {
           reveal_personal_emails: true,
         };
-        if (linkedinUrl) apolloBody.linkedin_url = linkedinUrl;
-        if (firstName) apolloBody.first_name = firstName;
-        if (lastName) apolloBody.last_name = lastName;
-        const company = input.company || (item.company as string) || "";
-        const domain = input.domain || "";
-        if (company) apolloBody.organization_name = company;
-        if (domain) apolloBody.domain = domain;
+        if (apolloId) {
+          apolloBody.id = apolloId;
+        } else {
+          if (linkedinUrl) apolloBody.linkedin_url = linkedinUrl;
+          if (firstName) apolloBody.first_name = firstName;
+          if (lastName) apolloBody.last_name = lastName;
+          const company = input.company || (item.company as string) || "";
+          const domain = input.domain || "";
+          if (company) apolloBody.organization_name = company;
+          if (domain) apolloBody.domain = domain;
+        }
 
         console.log(`[batch-email] Apollo payload for ${input.itemId}:`, JSON.stringify(apolloBody, null, 2));
         console.log(`[batch-email] DB item snapshot for ${input.itemId}:`, JSON.stringify({
