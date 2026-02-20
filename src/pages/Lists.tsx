@@ -613,12 +613,14 @@ export default function Lists() {
                           </TableCell>
                         </>
                       )}
-                      <TableCell>
-                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                          <MapPin className="h-3 w-3 shrink-0" />
-                          {item.location || FALLBACK}
-                        </div>
-                      </TableCell>
+                      {selectedList.list_type !== "leads" && (
+                        <TableCell>
+                          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                            <MapPin className="h-3 w-3 shrink-0" />
+                            {item.location || FALLBACK}
+                          </div>
+                        </TableCell>
+                      )}
                       {selectedList.list_type === "leads" && isLead && (
                         <>
                           <TableCell>
