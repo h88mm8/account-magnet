@@ -180,15 +180,16 @@ serve(async (req) => {
           return result;
         }
 
-        // ====== APOLLO ENRICHMENT (email only - sync) ======
-        const apolloBody: Record<string, unknown> = {
-          reveal_personal_emails: true,
-        };
+        // ====== APOLLO ENRICHMENT ======
+        const apolloBody: Record<string, unknown> = {};
         if (firstName) apolloBody.first_name = firstName;
         if (lastName) apolloBody.last_name = lastName;
         if (company) apolloBody.organization_name = company;
         if (domain) apolloBody.domain = domain;
+        if (linkedinUrl) apolloBody.linkedin_url = linkedinUrl;
         if (item.email) apolloBody.email = item.email as string;
+
+        console.log(`[batch] Apollo payload for ${input.itemId}:`, JSON.stringify(apolloBody));
 
         const apolloRes = await fetch("https://api.apollo.io/api/v1/people/match", {
           method: "POST",
