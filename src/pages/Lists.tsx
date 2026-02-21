@@ -610,7 +610,7 @@ export default function Lists() {
                           </button>
                           {item.linkedin_url && (
                             <a
-                              href={item.linkedin_url}
+                              href={item.linkedin_url.replace(/^http:\/\//, 'https://')}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-muted-foreground hover:text-primary transition-colors"
