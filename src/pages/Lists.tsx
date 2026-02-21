@@ -152,7 +152,7 @@ export default function Lists() {
 
   const handleBatchPhone = useCallback(async () => {
     const eligible = listItems.filter(
-      (i) => selectedIds.has(i.id) && i.item_type === "lead" && !hasValidPhone(i.phone) && i.linkedin_url
+      (i) => selectedIds.has(i.id) && i.item_type === "lead" && !hasValidPhone(i.phone) && (i.linkedin_url || i.provider_id)
     );
 
     if (eligible.length === 0) {
@@ -174,6 +174,7 @@ export default function Lists() {
         return {
           itemId: item.id,
           linkedinUrl: item.linkedin_url || undefined,
+          apolloId: item.provider_id || undefined,
           firstName: nameParts[0] || "",
           lastName: nameParts.slice(1).join(" ") || "",
           company: item.company || "",

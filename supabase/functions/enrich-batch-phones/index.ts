@@ -19,6 +19,7 @@ interface LeadInput {
   firstName?: string;
   lastName?: string;
   company?: string;
+  apolloId?: string;
 }
 
 interface LeadResult {
@@ -30,6 +31,57 @@ interface LeadResult {
   error?: string;
 }
 
+/**
+ * Resolve LinkedIn URL via Apollo /people/match using apolloId or name+company.
+ */
+async function resolveLinkedInUrl(
+  input: LeadInput,
+  item: Record<string, unknown>,
+  apolloApiKey: string
+): Promise<string | null> {
+  const apolloId = input.apolloId || (item.provider_id as string) || "";
+  const firstName = input.firstName || "";
+  const lastName = input.lastName || "";
+  const company = input.company || (item.company as string) || "";
+
+  if (!apolloId && !firstName) return null;
+
+  try {
+    const body: Record<string, unknown> = {};
+    if (apolloId) body.id = apolloId;
+    if (firstName) body.first_name = firstName;
+    if (lastName) body.last_name = lastName;
+    if (company) body.organization_name = company;
+
+    console.log(`[batch-phone] Resolving LinkedIn URL via Apollo for ${input.itemId}, apolloId: ${apolloId}`);
+
+    const res = await fetch("https://api.apollo.io/api/v1/people/match", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Api-Key": apolloApiKey },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      console.error(`[batch-phone] Apollo match failed: ${res.status}`);
+      return null;
+    }
+
+    const data = await res.json();
+    const person = data?.person;
+    const linkedinUrl = person?.linkedin_url;
+
+    if (linkedinUrl) {
+      console.log(`[batch-phone] Resolved LinkedIn URL for ${input.itemId}: ${linkedinUrl}`);
+      // Also update the item in DB for future use
+      return linkedinUrl;
+    }
+    return null;
+  } catch (err) {
+    console.error(`[batch-phone] Apollo match error for ${input.itemId}:`, err);
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -38,6 +90,7 @@ serve(async (req) => {
   try {
     const APIFY_API_KEY = Deno.env.get("APIFY_API_KEY");
     if (!APIFY_API_KEY) throw new Error("APIFY_API_KEY not configured");
+    const APOLLO_API_KEY = Deno.env.get("APOLLO_API_KEY") || "";
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -92,15 +145,17 @@ serve(async (req) => {
     const itemMap = new Map(items.map((i: Record<string, unknown>) => [i.id as string, i]));
 
     // Filter: skip leads that already have phone
+    // Now accepts leads without linkedin_url if they have provider_id (apolloId)
     const eligible: Array<{ input: LeadInput; item: Record<string, unknown> }> = [];
     for (const lead of leads) {
       const item = itemMap.get(lead.itemId);
       if (!item) continue;
       if (item.phone_checked_at && item.phone) continue;
-      // Require linkedin_url for Apify scraping
       const linkedinUrl = lead.linkedinUrl || (item.linkedin_url as string) || "";
-      if (!linkedinUrl) continue;
-      eligible.push({ input: lead, item });
+      const apolloId = lead.apolloId || (item.provider_id as string) || "";
+      // Accept if has linkedin URL OR apolloId (we can resolve URL via Apollo)
+      if (!linkedinUrl && !apolloId) continue;
+      eligible.push({ input: { ...lead, apolloId }, item });
     }
 
     if (eligible.length === 0) {
@@ -132,7 +187,28 @@ serve(async (req) => {
     async function processLead(entry: { input: LeadInput; item: Record<string, unknown> }): Promise<LeadResult> {
       const { input, item } = entry;
       const result: LeadResult = { itemId: input.itemId, phoneFound: false, status: "done" };
-      const linkedinUrl = input.linkedinUrl || (item.linkedin_url as string) || "";
+      let linkedinUrl = input.linkedinUrl || (item.linkedin_url as string) || "";
+
+      // If no LinkedIn URL, resolve via Apollo using apolloId
+      if (!linkedinUrl && APOLLO_API_KEY) {
+        const resolved = await resolveLinkedInUrl(input, item, APOLLO_API_KEY);
+        if (resolved) {
+          linkedinUrl = resolved;
+          // Persist the resolved LinkedIn URL for future use
+          await supabase.from("prospect_list_items").update({ linkedin_url: resolved }).eq("id", input.itemId);
+        }
+      }
+
+      if (!linkedinUrl) {
+        result.status = "not_found";
+        result.error = "no_linkedin_url";
+        await supabase.from("prospect_list_items").update({
+          phone_checked_at: new Date().toISOString(),
+          enrichment_status: "not_found",
+          apollo_reason: "linkedin_url_not_resolved",
+        }).eq("id", input.itemId);
+        return result;
+      }
 
       try {
         console.log(`[batch-phone] Starting Apify for ${input.itemId}, url: ${linkedinUrl}`);
