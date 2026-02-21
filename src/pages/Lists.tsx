@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { List, Trash2, Pencil, Search, ChevronRight, Building2, User, X, MapPin, Briefcase, Users, Factory, UserCircle, Mail, Phone, Loader2, CheckSquare, MessageCircle } from "lucide-react";
+import { List, Trash2, Pencil, Search, ChevronRight, Building2, User, X, MapPin, Briefcase, Users, Factory, UserCircle, Mail, Phone, Loader2, CheckSquare, MessageCircle, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -412,16 +412,48 @@ export default function Lists() {
     return (
       <>
       <div className="space-y-6 p-6 lg:p-8">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => { setSelectedListId(null); setSearchQuery(""); }}>
-            ← Voltar
-          </Button>
-          <div>
-            <h1 className="font-display text-2xl font-bold text-foreground">{selectedList.name}</h1>
-            <p className="text-sm text-muted-foreground">
-              {selectedList.item_count ?? 0} itens · Criada em {new Date(selectedList.created_at).toLocaleDateString("pt-BR")}
-            </p>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="sm" onClick={() => { setSelectedListId(null); setSearchQuery(""); }}>
+              ← Voltar
+            </Button>
+            <div>
+              <h1 className="font-display text-2xl font-bold text-foreground">{selectedList.name}</h1>
+              <p className="text-sm text-muted-foreground">
+                {selectedList.item_count ?? 0} itens · Criada em {new Date(selectedList.created_at).toLocaleDateString("pt-BR")}
+              </p>
+            </div>
           </div>
+          {filteredItems.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => {
+                const isLead = selectedList.list_type === "leads";
+                const headers = isLead
+                  ? ["Nome", "Cargo", "Empresa", "Setor", "Localização", "LinkedIn", "Email", "Telefone"]
+                  : ["Nome", "Setor", "Localização", "Funcionários", "LinkedIn"];
+                const rows = filteredItems.map((item) =>
+                  isLead
+                    ? [item.name, item.title || "", item.company || "", item.industry || "", item.location || "", item.linkedin_url || "", item.email || "", item.phone || ""]
+                    : [item.name, item.industry || "", item.location || "", item.headcount || "", item.linkedin_url || ""]
+                );
+                const csv = [headers, ...rows].map((r) => r.map((c) => `"${(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+                const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `${selectedList.name.replace(/[^a-zA-Z0-9]/g, "_")}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+                toast({ title: `${filteredItems.length} itens exportados!` });
+              }}
+            >
+              <Download className="h-4 w-4" />
+              Exportar CSV
+            </Button>
+          )}
         </div>
 
         <div className="relative max-w-sm">
