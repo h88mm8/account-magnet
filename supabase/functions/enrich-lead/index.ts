@@ -10,6 +10,30 @@ const corsHeaders = {
 const CREDIT_COST_EMAIL = 1;
 const CREDIT_COST_WHATSAPP = 8;
 
+/**
+ * Extract phone from Apollo person object.
+ */
+function extractPhone(person: Record<string, unknown>): string | null {
+  if (!person) return null;
+  const directPhone =
+    (person.sanitized_phone as string) ||
+    (person.phone_number as string) ||
+    (person.mobile_phone as string) ||
+    (person.corporate_phone as string) ||
+    null;
+  if (directPhone) return directPhone;
+
+  const phoneNumbers = person.phone_numbers as Array<Record<string, unknown>> | undefined;
+  if (phoneNumbers?.length) {
+    const mobile = phoneNumbers.find((p) => p.type === "mobile");
+    if (mobile?.sanitized_number) return mobile.sanitized_number as string;
+    if (mobile?.raw_number) return mobile.raw_number as string;
+    const first = phoneNumbers[0];
+    return (first?.sanitized_number || first?.raw_number || first?.number) as string || null;
+  }
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -40,7 +64,7 @@ serve(async (req) => {
       });
     }
 
-    const { itemId, searchType, linkedinUrl, firstName, lastName, company, domain } = await req.json();
+    const { itemId, searchType, firstName, lastName, company, domain } = await req.json();
 
     if (!itemId || !searchType) {
       return new Response(
@@ -64,7 +88,7 @@ serve(async (req) => {
       });
     }
 
-    // ============ ANTI-REPROCESSING CHECK (no credit consumed) ============
+    // ============ ANTI-REPROCESSING CHECK ============
     const checkedAtField = searchType === "email" ? "email_checked_at" : "phone_checked_at";
     if (item[checkedAtField]) {
       const dataField = searchType === "email" ? "email" : "phone";
@@ -95,7 +119,6 @@ serve(async (req) => {
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-    console.log(`[credits] Deducted ${creditCost} for ${searchType}_enrich. Remaining: ${remaining}`);
 
     // ============ CONCURRENCY LOCK ============
     const { error: lockError, data: lockData } = await supabase
@@ -110,7 +133,6 @@ serve(async (req) => {
       .single();
 
     if (lockError || !lockData) {
-      // Refund since we couldn't lock
       await supabase.rpc("add_credits", {
         p_user_id: user.id,
         p_amount: creditCost,
@@ -118,11 +140,7 @@ serve(async (req) => {
         p_description: `Reembolso ${searchType} - já em processamento`,
       });
       return new Response(
-        JSON.stringify({
-          alreadyChecked: true,
-          found: false,
-          message: "Enrichment already in progress or completed",
-        }),
+        JSON.stringify({ alreadyChecked: true, found: false, message: "Already in progress" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -131,26 +149,22 @@ serve(async (req) => {
     const resolvedFirst = firstName || item.name?.split(" ")[0] || "";
     const resolvedLast = lastName || item.name?.split(" ").slice(1).join(" ") || "";
     const resolvedCompany = company || item.company || "";
+    const apolloId = item.provider_id || item.external_id || "";
 
-    const hasStrongIdentifiers = !!(resolvedFirst && resolvedLast && (resolvedCompany || domain));
+    const hasStrongIdentifiers = !!(apolloId || (resolvedFirst && resolvedLast && (resolvedCompany || domain)));
 
     if (!hasStrongIdentifiers) {
-      console.warn("Apollo skipped: no strong identifiers");
-      // Refund credit since we can't even attempt enrichment
       await supabase.rpc("add_credits", {
         p_user_id: user.id,
         p_amount: creditCost,
         p_type: "refund_enrich",
         p_description: `Reembolso ${searchType} - identificadores insuficientes`,
       });
-      await supabase
-        .from("prospect_list_items")
-        .update({
-          enrichment_status: "done",
-          apollo_called: false,
-          apollo_reason: "no_strong_identifiers",
-        })
-        .eq("id", itemId);
+      await supabase.from("prospect_list_items").update({
+        enrichment_status: "done",
+        apollo_called: false,
+        apollo_reason: "no_strong_identifiers",
+      }).eq("id", itemId);
 
       return new Response(
         JSON.stringify({ found: false, status: "done" }),
@@ -159,206 +173,117 @@ serve(async (req) => {
     }
 
     // ============ APOLLO ENRICHMENT ============
-    console.log("Starting Apollo enrichment for:", { itemId, searchType, resolvedFirst, resolvedLast, resolvedCompany });
-
     try {
-      if (searchType === "phone") {
-        const webhookBaseUrl = `${SUPABASE_URL}/functions/v1/webhooks-apollo`;
-        const webhookUrl = `${webhookBaseUrl}?itemId=${encodeURIComponent(itemId)}&searchType=phone`;
+      const body: Record<string, unknown> = {};
+      if (apolloId) body.id = apolloId;
+      if (resolvedFirst) body.first_name = resolvedFirst;
+      if (resolvedLast) body.last_name = resolvedLast;
+      if (resolvedCompany) body.organization_name = resolvedCompany;
+      if (domain) body.domain = domain;
+      if (item.email) body.email = item.email;
 
-        const apolloBody: Record<string, unknown> = {
-          reveal_phone_number: true,
-          webhook_url: webhookUrl,
-        };
-        if (resolvedFirst) apolloBody.first_name = resolvedFirst;
-        if (resolvedLast) apolloBody.last_name = resolvedLast;
-        if (resolvedCompany) apolloBody.organization_name = resolvedCompany;
-        if (domain) apolloBody.domain = domain;
-        if (item.email) apolloBody.email = item.email;
-
-        const response = await fetch("https://api.apollo.io/api/v1/people/match", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-api-key": APOLLO_API_KEY },
-          body: JSON.stringify(apolloBody),
-        });
-
-        const responseText = await response.text();
-        if (!response.ok) {
-          // Refund on API error
-          await supabase.rpc("add_credits", {
-            p_user_id: user.id,
-            p_amount: creditCost,
-            p_type: "refund_enrich",
-            p_description: `Reembolso ${searchType} - erro API Apollo`,
-          });
-          throw new Error(`Apollo match error [${response.status}]: ${responseText}`);
-        }
-
-        console.log("Apollo phone enrichment dispatched, waiting for webhook");
-        return new Response(
-          JSON.stringify({ found: false, status: "processing", message: "Aguardando resultado do Apollo via webhook" }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      if (searchType === "email") {
+        body.reveal_personal_emails = true;
+      } else {
+        body.reveal_phone_number = true;
       }
 
-      // Email enrichment is SYNC
-      const apolloResult = await enrichWithApollo(
-        { firstName: resolvedFirst, lastName: resolvedLast, company: resolvedCompany, domain, email: item.email },
-        APOLLO_API_KEY
-      );
+      console.log(`[enrich-lead] Apollo ${searchType} for ${itemId}:`, JSON.stringify(body));
 
-      const email = apolloResult?.email || null;
-      const found = !!email;
+      const response = await fetch("https://api.apollo.io/api/v1/people/match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": APOLLO_API_KEY },
+        body: JSON.stringify(body),
+      });
 
-      if (!found) {
-        // ============ APIFY FALLBACK ============
-        console.log("[enrich-lead] Apollo returned no email. Trying Apify fallback...");
-        const APIFY_API_KEY = Deno.env.get("APIFY_API_KEY");
-        const linkedinUrlForApify = linkedinUrl || item.linkedin_url;
-
-        if (APIFY_API_KEY && linkedinUrlForApify) {
-          try {
-            const actorId = "2SyF0bVxmgGr8IVCZ"; // LinkedIn profile scraper
-            const webhookPayload = {
-              itemId,
-              searchType: "email",
-              firstName: resolvedFirst,
-              lastName: resolvedLast,
-              company: resolvedCompany,
-              domain: domain || "",
-            };
-
-            // Start Apify actor run
-            const actorUrl = `https://api.apify.com/v2/acts/${actorId}/runs?token=${APIFY_API_KEY}`;
-            const apifyResponse = await fetch(actorUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                startUrls: [{ url: linkedinUrlForApify }],
-                maxItems: 1,
-              }),
-            });
-
-            const apifyData = await apifyResponse.json();
-            const apifyRunId = apifyData?.data?.id;
-
-            if (apifyRunId) {
-              console.log(`[enrich-lead] Apify run started: ${apifyRunId}`);
-
-              // Register webhook for when run finishes
-              const webhookUrl = `${SUPABASE_URL}/functions/v1/webhooks-apify`;
-              await fetch(`https://api.apify.com/v2/acts/${actorId}/runs/${apifyRunId}/webhooks?token=${APIFY_API_KEY}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  eventTypes: ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.ABORTED", "ACTOR.RUN.TIMED_OUT"],
-                  requestUrl: webhookUrl,
-                  payloadTemplate: JSON.stringify({
-                    runId: "{{resource.id}}",
-                    eventType: "{{event}}",
-                    datasetId: "{{resource.defaultDatasetId}}",
-                    ...webhookPayload,
-                  }),
-                }),
-              });
-
-              // Update item status
-              await supabase
-                .from("prospect_list_items")
-                .update({
-                  enrichment_status: "processing",
-                  apify_called: true,
-                  apify_run_id: apifyRunId,
-                  apollo_called: true,
-                  apollo_reason: "no_email_found_trying_apify",
-                })
-                .eq("id", itemId);
-
-              return new Response(
-                JSON.stringify({ found: false, status: "processing", message: "Apollo sem resultado. Apify em andamento." }),
-                { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-              );
-            }
-          } catch (apifyErr) {
-            console.error("[enrich-lead] Apify fallback error:", apifyErr);
-          }
-        }
-
-        // No Apify or Apify failed to start — refund
+      if (!response.ok) {
+        const errText = await response.text();
         await supabase.rpc("add_credits", {
           p_user_id: user.id,
           p_amount: creditCost,
           p_type: "refund_enrich",
-          p_description: `Reembolso email - nenhum resultado encontrado`,
+          p_description: `Reembolso ${searchType} - erro API Apollo`,
         });
+        throw new Error(`Apollo error [${response.status}]: ${errText}`);
       }
+
+      const data = await response.json();
+      const person = data?.person;
 
       const updateData: Record<string, unknown> = {
         enrichment_status: "done",
         apollo_called: true,
-        apollo_reason: "direct",
       };
-      if (email) { updateData.email = email; updateData.enrichment_source = "apollo"; }
+
+      // Also update linkedin_url if missing
+      if (person?.linkedin_url && !item.linkedin_url) {
+        updateData.linkedin_url = person.linkedin_url;
+      }
+
+      let found = false;
+
+      if (searchType === "email") {
+        const email = person?.email || person?.personal_emails?.[0] || null;
+        found = !!email;
+        if (email) {
+          updateData.email = email;
+          updateData.enrichment_source = "apollo";
+          updateData.apollo_reason = "email_found";
+        } else {
+          updateData.apollo_reason = "email_not_found";
+        }
+      } else {
+        const phone = extractPhone(person || {});
+        found = !!phone;
+        if (phone) {
+          updateData.phone = phone;
+          updateData.enrichment_source = "apollo";
+          updateData.apollo_reason = "phone_found";
+        } else {
+          updateData.apollo_reason = "phone_not_found";
+        }
+      }
+
+      if (!found) {
+        // Refund credits when nothing is found
+        await supabase.rpc("add_credits", {
+          p_user_id: user.id,
+          p_amount: creditCost,
+          p_type: "refund_enrich",
+          p_description: `Reembolso ${searchType} - nenhum resultado encontrado`,
+        });
+      }
 
       await supabase.from("prospect_list_items").update(updateData).eq("id", itemId);
 
+      const dataField = searchType === "email" ? "email" : "phone";
       return new Response(
-        JSON.stringify({ email, found, source: found ? "apollo" : null, status: found ? "done" : "processing" }),
+        JSON.stringify({
+          [dataField]: found ? updateData[dataField] : null,
+          found,
+          source: found ? "apollo" : null,
+          status: "done",
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     } catch (err) {
-      console.error("Apollo error:", err);
-      await supabase
-        .from("prospect_list_items")
-        .update({
-          enrichment_status: "error",
-          apollo_called: true,
-          apollo_reason: `error: ${err instanceof Error ? err.message : "unknown"}`,
-        })
-        .eq("id", itemId);
+      console.error("[enrich-lead] Apollo error:", err);
+      await supabase.from("prospect_list_items").update({
+        enrichment_status: "error",
+        apollo_called: true,
+        apollo_reason: `error: ${err instanceof Error ? err.message : "unknown"}`,
+      }).eq("id", itemId);
 
       return new Response(
-        JSON.stringify({ found: false, enrichmentError: "Falha no enrichment", status: "error" }),
+        JSON.stringify({ found: false, status: "error", enrichmentError: "Falha no enrichment" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
   } catch (error) {
-    console.error("enrich-lead error:", error);
+    console.error("[enrich-lead] Fatal:", error);
     return new Response(
-      JSON.stringify({
-        error: error instanceof Error ? error.message : "Unknown error",
-        enrichmentError: "Falha no enrichment",
-        found: false,
-        status: "error",
-      }),
+      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error", found: false, status: "error" }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
-
-async function enrichWithApollo(
-  params: { firstName?: string; lastName?: string; company?: string; domain?: string; email?: string | null },
-  apiKey: string
-): Promise<{ email?: string } | null> {
-  const body: Record<string, unknown> = { reveal_personal_emails: true };
-  if (params.firstName) body.first_name = params.firstName;
-  if (params.lastName) body.last_name = params.lastName;
-  if (params.company) body.organization_name = params.company;
-  if (params.domain) body.domain = params.domain;
-  if (params.email) body.email = params.email;
-
-  const response = await fetch("https://api.apollo.io/api/v1/people/match", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-api-key": apiKey },
-    body: JSON.stringify(body),
-  });
-
-  const responseText = await response.text();
-  if (!response.ok) throw new Error(`Apollo match error [${response.status}]: ${responseText}`);
-
-  const data = JSON.parse(responseText);
-  const person = data.person;
-  if (!person) return null;
-
-  return { email: person.email || person.personal_emails?.[0] || null };
-}

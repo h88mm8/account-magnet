@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { List, Trash2, Pencil, Search, ChevronRight, Building2, User, X, MapPin, Briefcase, Users, Factory, UserCircle, Mail, Phone, Loader2, CheckSquare, MessageCircle, Download } from "lucide-react";
+import { List, Trash2, Pencil, Search, ChevronRight, Building2, User, X, MapPin, Briefcase, Users, Factory, UserCircle, Mail, Phone, Loader2, CheckSquare, MessageCircle, Download, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -598,15 +598,29 @@ export default function Lists() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <button
-                          className="flex items-center gap-2 cursor-pointer hover:underline text-left group/name"
-                          onClick={() => { setDetailItem(item); setDetailOpen(true); }}
-                        >
-                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted group-hover/name:bg-primary/10 transition-colors">
-                            {isLead ? <User className="h-3 w-3 text-muted-foreground" /> : <Building2 className="h-3 w-3 text-muted-foreground" />}
-                          </div>
-                          <span className="text-sm font-medium text-foreground group-hover/name:text-primary transition-colors">{item.name}</span>
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="flex items-center gap-2 cursor-pointer hover:underline text-left group/name"
+                            onClick={() => { setDetailItem(item); setDetailOpen(true); }}
+                          >
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted group-hover/name:bg-primary/10 transition-colors">
+                              {isLead ? <User className="h-3 w-3 text-muted-foreground" /> : <Building2 className="h-3 w-3 text-muted-foreground" />}
+                            </div>
+                            <span className="text-sm font-medium text-foreground group-hover/name:text-primary transition-colors">{item.name}</span>
+                          </button>
+                          {item.linkedin_url && (
+                            <a
+                              href={item.linkedin_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-muted-foreground hover:text-primary transition-colors"
+                              title="Ver perfil no LinkedIn"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          )}
+                        </div>
                       </TableCell>
                       {selectedList.list_type === "leads" ? (
                         <>
