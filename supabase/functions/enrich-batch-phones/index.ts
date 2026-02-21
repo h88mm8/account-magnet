@@ -219,10 +219,7 @@ serve(async (req) => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            keywords: [linkedinUrl],
-            platform: "linkedin_profile",
-            country: "Global",
-            maxPhoneNumbers: 1,
+            profileUrls: [linkedinUrl],
           }),
         });
         const apifyStartData = await apifyStartRes.json();
