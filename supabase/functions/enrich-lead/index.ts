@@ -186,6 +186,8 @@ serve(async (req) => {
         body.reveal_personal_emails = true;
       } else {
         body.reveal_phone_number = true;
+        const webhookUrl = `${SUPABASE_URL}/functions/v1/webhooks-apollo?itemId=${encodeURIComponent(itemId)}&searchType=phone`;
+        body.webhook_url = webhookUrl;
       }
 
       console.log(`[enrich-lead] Apollo ${searchType} for ${itemId}:`, JSON.stringify(body));
@@ -210,60 +212,56 @@ serve(async (req) => {
       const data = await response.json();
       const person = data?.person;
 
+      // Also update linkedin_url if missing
+      const linkedinUpdate: Record<string, unknown> = {};
+      if (person?.linkedin_url && !item.linkedin_url) {
+        linkedinUpdate.linkedin_url = person.linkedin_url;
+      }
+
+      // Phone enrichment is ASYNC — Apollo sends result via webhook
+      if (searchType === "phone") {
+        await supabase.from("prospect_list_items").update({
+          ...linkedinUpdate,
+          enrichment_status: "processing",
+          apollo_called: true,
+          apollo_reason: "waiting_webhook",
+        }).eq("id", itemId);
+
+        console.log("[enrich-lead] Phone enrichment dispatched, waiting for Apollo webhook");
+        return new Response(
+          JSON.stringify({ found: false, status: "processing", message: "Aguardando resultado do Apollo via webhook" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Email enrichment is SYNC
       const updateData: Record<string, unknown> = {
+        ...linkedinUpdate,
         enrichment_status: "done",
         apollo_called: true,
       };
 
-      // Also update linkedin_url if missing
-      if (person?.linkedin_url && !item.linkedin_url) {
-        updateData.linkedin_url = person.linkedin_url;
-      }
-
-      let found = false;
-
-      if (searchType === "email") {
-        const email = person?.email || person?.personal_emails?.[0] || null;
-        found = !!email;
-        if (email) {
-          updateData.email = email;
-          updateData.enrichment_source = "apollo";
-          updateData.apollo_reason = "email_found";
-        } else {
-          updateData.apollo_reason = "email_not_found";
-        }
+      const email = person?.email || person?.personal_emails?.[0] || null;
+      const found = !!email;
+      if (email) {
+        updateData.email = email;
+        updateData.enrichment_source = "apollo";
+        updateData.apollo_reason = "email_found";
       } else {
-        const phone = extractPhone(person || {});
-        found = !!phone;
-        if (phone) {
-          updateData.phone = phone;
-          updateData.enrichment_source = "apollo";
-          updateData.apollo_reason = "phone_found";
-        } else {
-          updateData.apollo_reason = "phone_not_found";
-        }
-      }
-
-      if (!found) {
+        updateData.apollo_reason = "email_not_found";
         // Refund credits when nothing is found
         await supabase.rpc("add_credits", {
           p_user_id: user.id,
           p_amount: creditCost,
           p_type: "refund_enrich",
-          p_description: `Reembolso ${searchType} - nenhum resultado encontrado`,
+          p_description: `Reembolso email - nenhum resultado encontrado`,
         });
       }
 
       await supabase.from("prospect_list_items").update(updateData).eq("id", itemId);
 
-      const dataField = searchType === "email" ? "email" : "phone";
       return new Response(
-        JSON.stringify({
-          [dataField]: found ? updateData[dataField] : null,
-          found,
-          source: found ? "apollo" : null,
-          status: "done",
-        }),
+        JSON.stringify({ email: found ? email : null, found, source: found ? "apollo" : null, status: "done" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     } catch (err) {

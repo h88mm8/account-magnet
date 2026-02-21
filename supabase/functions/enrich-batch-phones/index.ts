@@ -10,6 +10,8 @@ const corsHeaders = {
 const CREDIT_COST_PHONE = 8;
 const MAX_LEADS = 100;
 const CONCURRENCY = 5;
+const WEBHOOK_POLL_TIMEOUT_MS = 30000;
+const WEBHOOK_POLL_INTERVAL_MS = 2000;
 
 interface LeadInput {
   itemId: string;
@@ -169,8 +171,12 @@ serve(async (req) => {
         const company = input.company || (item.company as string) || "";
         const email = (item.email as string) || "";
 
-        // Build Apollo /people/match request with reveal_phone_number
-        const body: Record<string, unknown> = { reveal_phone_number: true };
+        // Build Apollo /people/match request with reveal_phone_number + webhook_url
+        const webhookUrl = `${SUPABASE_URL}/functions/v1/webhooks-apollo?itemId=${encodeURIComponent(input.itemId)}&searchType=phone`;
+        const body: Record<string, unknown> = {
+          reveal_phone_number: true,
+          webhook_url: webhookUrl,
+        };
         if (apolloId) body.id = apolloId;
         if (firstName) body.first_name = firstName;
         if (lastName) body.last_name = lastName;
@@ -199,57 +205,74 @@ serve(async (req) => {
           return result;
         }
 
-        const data = await res.json();
-        const person = data?.person;
-        const foundPhone = extractPhone(person || {});
-
-        // Also update linkedin_url if resolved
-        const linkedinUrl = person?.linkedin_url;
-
-        console.log(`[batch-phone] Result for ${input.itemId}: phone=${foundPhone}, linkedin=${linkedinUrl}`);
-
-        const updateData: Record<string, unknown> = {
+        // Mark as processing and wait for webhook to update the record
+        await supabase.from("prospect_list_items").update({
           phone_checked_at: new Date().toISOString(),
+          enrichment_status: "processing",
           apollo_called: true,
-        };
+          apollo_reason: "waiting_webhook",
+        }).eq("id", input.itemId);
 
-        if (linkedinUrl && !(item.linkedin_url as string)) {
-          updateData.linkedin_url = linkedinUrl;
-        }
+        // Poll DB for webhook result
+        const startTime = Date.now();
+        while (Date.now() - startTime < WEBHOOK_POLL_TIMEOUT_MS) {
+          await new Promise((r) => setTimeout(r, WEBHOOK_POLL_INTERVAL_MS));
+          const { data: updated } = await supabase
+            .from("prospect_list_items")
+            .select("phone, enrichment_status, apollo_reason")
+            .eq("id", input.itemId)
+            .single();
 
-        if (foundPhone) {
-          updateData.phone = foundPhone;
-          updateData.enrichment_source = "apollo";
-          updateData.enrichment_status = "done";
-          updateData.apollo_reason = "phone_found";
-          result.phoneFound = true;
-          result.phone = foundPhone;
-          result.source = "apollo";
+          if (updated?.enrichment_status === "done") {
+            if (updated.phone) {
+              result.phoneFound = true;
+              result.phone = updated.phone;
+              result.source = "apollo";
 
-          const { data: remaining } = await supabase.rpc("deduct_credits", {
-            p_user_id: user!.id,
-            p_amount: CREDIT_COST_PHONE,
-            p_type: "batch_enrich_phone",
-            p_description: `Telefone encontrado - ${item.name}`,
-            p_reference_id: input.itemId,
-          });
+              const { data: remaining } = await supabase.rpc("deduct_credits", {
+                p_user_id: user!.id,
+                p_amount: CREDIT_COST_PHONE,
+                p_type: "batch_enrich_phone",
+                p_description: `Telefone encontrado - ${item.name}`,
+                p_reference_id: input.itemId,
+              });
 
-          if (remaining === -1) {
-            delete updateData.phone;
-            result.phoneFound = false;
-            result.status = "credit_error";
-            updateData.enrichment_status = "done";
-            updateData.apollo_reason = "insufficient_credits";
-          } else {
-            totalCreditsUsed += CREDIT_COST_PHONE;
+              if (remaining === -1) {
+                // Remove phone if can't pay
+                await supabase.from("prospect_list_items").update({
+                  phone: null,
+                  apollo_reason: "insufficient_credits",
+                }).eq("id", input.itemId);
+                result.phoneFound = false;
+                result.status = "credit_error";
+              } else {
+                totalCreditsUsed += CREDIT_COST_PHONE;
+              }
+            } else {
+              result.status = "not_found";
+            }
+            break;
           }
-        } else {
-          updateData.enrichment_status = "not_found";
-          updateData.apollo_reason = "phone_not_found";
-          result.status = "not_found";
         }
 
-        await supabase.from("prospect_list_items").update(updateData).eq("id", input.itemId);
+        // If still processing after timeout, mark as not_found
+        if (!result.phoneFound && result.status === "done") {
+          const { data: finalCheck } = await supabase
+            .from("prospect_list_items")
+            .select("phone, enrichment_status")
+            .eq("id", input.itemId)
+            .single();
+          if (finalCheck?.enrichment_status === "processing") {
+            await supabase.from("prospect_list_items").update({
+              enrichment_status: "not_found",
+              apollo_reason: "webhook_timeout",
+            }).eq("id", input.itemId);
+            result.status = "not_found";
+          } else if (finalCheck?.phone) {
+            result.phoneFound = true;
+            result.phone = finalCheck.phone;
+          }
+        }
       } catch (err) {
         console.error(`[batch-phone] Error for ${input.itemId}:`, err);
         result.status = "error";
