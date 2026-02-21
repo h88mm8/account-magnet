@@ -218,13 +218,19 @@ serve(async (req) => {
         const apifyStartRes = await fetch(actorUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ startUrls: [{ url: linkedinUrl }], maxItems: 1 }),
+          body: JSON.stringify({
+            keywords: [linkedinUrl],
+            platform: "linkedin_profile",
+            country: "Global",
+            maxPhoneNumbers: 1,
+          }),
         });
         const apifyStartData = await apifyStartRes.json();
         const runId = apifyStartData?.data?.id;
         const datasetId = apifyStartData?.data?.defaultDatasetId;
 
         if (!runId) {
+          console.error(`[batch-phone] Apify start failed for ${input.itemId}:`, JSON.stringify(apifyStartData));
           result.status = "error";
           result.error = "apify_start_failed";
           await supabase.from("prospect_list_items").update({
@@ -234,6 +240,8 @@ serve(async (req) => {
           }).eq("id", input.itemId);
           return result;
         }
+
+        console.log(`[batch-phone] Apify run started: ${runId}, dataset: ${datasetId}`);
 
         // Poll for completion
         const startTime = Date.now();
@@ -248,12 +256,24 @@ serve(async (req) => {
           if (runStatus === "SUCCEEDED") {
             const dsRes = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_API_KEY}`);
             const dsItems = await dsRes.json();
+            console.log(`[batch-phone] Apify dataset items for ${input.itemId}:`, JSON.stringify(dsItems?.length ? Object.keys(dsItems[0]) : "empty"));
             if (Array.isArray(dsItems) && dsItems.length > 0) {
               const profile = dsItems[0];
-              foundPhone = profile.phone || profile.phones?.[0] || null;
+              // Cover all known field variations from Apify LinkedIn scrapers
+              foundPhone =
+                profile.phone_number ||
+                profile.phoneNumber ||
+                profile.mobileNumber ||
+                profile.mobile_number ||
+                profile.phone ||
+                profile.phones?.[0] ||
+                profile.contact?.phone ||
+                null;
+              console.log(`[batch-phone] Extracted phone for ${input.itemId}: ${foundPhone}`);
             }
             break;
           } else if (["FAILED", "ABORTED", "TIMED-OUT"].includes(runStatus)) {
+            console.warn(`[batch-phone] Apify run ${runId} ended with: ${runStatus}`);
             break;
           }
         }
