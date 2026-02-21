@@ -183,7 +183,27 @@ export function useProspectLists() {
       await fetchSavedItemKeys();
       invalidateMetrics();
 
-      // Auto-enrich removed — use batch enrichment from Lists page instead
+      // Auto-enrich basic profile data (full name + LinkedIn URL) for Apollo leads
+      if (inserted && inserted.length > 0) {
+        const apolloItems = inserted
+          .filter((row: Record<string, unknown>) => row.external_id || row.provider_id)
+          .map((row: Record<string, unknown>) => ({
+            itemId: row.id as string,
+            apolloId: (row.external_id || row.provider_id) as string,
+          }));
+
+        if (apolloItems.length > 0) {
+          // Fire-and-forget — don't block the UI
+          supabase.functions
+            .invoke("enrich-profile-basic", { body: { items: apolloItems } })
+            .then((res) => {
+              if (res.data?.enriched > 0) {
+                console.log(`[auto-enrich] ${res.data.enriched}/${apolloItems.length} profiles enriched`);
+              }
+            })
+            .catch((err) => console.warn("[auto-enrich] error:", err));
+        }
+      }
     }
   };
 
