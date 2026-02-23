@@ -3,7 +3,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
@@ -15,7 +14,6 @@ import {
   Save,
   Send,
   Users,
-  X,
   AlertTriangle,
   CheckCircle,
   Variable,
@@ -34,6 +32,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { RichTextEditor } from "@/components/RichTextEditor";
 
 const VARIABLES = [
   { label: "Primeiro nome", token: "{{FIRST_NAME}}" },
@@ -71,6 +70,11 @@ export function EmailCampaignEditor({ open, onOpenChange, onCreated }: EmailCamp
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitMode, setSubmitMode] = useState<"draft" | "send" | "test">("draft");
 
+  // CTA button config per campaign
+  const [ctaButtonText, setCtaButtonText] = useState("Acessar site");
+  const [ctaButtonColor, setCtaButtonColor] = useState("#3b82f6");
+  const [ctaButtonFontColor, setCtaButtonFontColor] = useState("#ffffff");
+
   // Progress state
   const [showProgress, setShowProgress] = useState(false);
   const [progressSent, setProgressSent] = useState(0);
@@ -83,7 +87,6 @@ export function EmailCampaignEditor({ open, onOpenChange, onCreated }: EmailCamp
   const [showTrackingDialog, setShowTrackingDialog] = useState(false);
   const [trackingText, setTrackingText] = useState("");
   const [trackingUrl, setTrackingUrl] = useState("");
-  const editorRef = useRef<HTMLTextAreaElement>(null);
 
   const totalContacts = selectedLists.reduce((s, l) => s + l.count, 0);
 
@@ -101,25 +104,10 @@ export function EmailCampaignEditor({ open, onOpenChange, onCreated }: EmailCamp
     setSelectedLists((prev) => [...prev, { id: listId, name: listName, count: count ?? 0 }]);
   };
 
-  const insertAtCursor = useCallback(
-    (text: string) => {
-      const el = editorRef.current;
-      if (!el) {
-        setMessageHtml((prev) => prev + text);
-        return;
-      }
-      const start = el.selectionStart;
-      const end = el.selectionEnd;
-      const current = el.value;
-      const newVal = current.substring(0, start) + text + current.substring(end);
-      setMessageHtml(newVal);
-      setTimeout(() => {
-        el.selectionStart = el.selectionEnd = start + text.length;
-        el.focus();
-      }, 10);
-    },
-    []
-  );
+  const insertAtCursor = useCallback((text: string) => {
+    // With TipTap, we append to the current HTML
+    setMessageHtml((prev) => prev + text);
+  }, []);
 
   const insertTrackingLink = () => {
     if (!trackingText) return;
@@ -151,6 +139,7 @@ export function EmailCampaignEditor({ open, onOpenChange, onCreated }: EmailCamp
 
   const resetForm = () => {
     setName(""); setSubject(""); setMessageHtml(""); setSelectedLists([]); setDailyLimit("50");
+    setCtaButtonText("Acessar site"); setCtaButtonColor("#3b82f6"); setCtaButtonFontColor("#ffffff");
     setIsSubmitting(false); setShowProgress(false); setProgressSent(0); setProgressTotal(0);
     setProgressDone(false); setProgressHadErrors(false);
     if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
@@ -185,7 +174,17 @@ export function EmailCampaignEditor({ open, onOpenChange, onCreated }: EmailCamp
     if (selectedLists.length === 0 && mode === "send") { toast({ title: "Selecione pelo menos uma lista", variant: "destructive" }); return; }
     setIsSubmitting(true); setSubmitMode(mode);
     try {
-      const campaign = await createCampaign.mutateAsync({ name, channel: "email", subject, message_template: messageHtml, daily_limit: parseInt(dailyLimit) || 50, list_id: selectedLists[0]?.id || null });
+      const campaign = await createCampaign.mutateAsync({
+        name,
+        channel: "email",
+        subject,
+        message_template: messageHtml,
+        daily_limit: parseInt(dailyLimit) || 50,
+        list_id: selectedLists[0]?.id || null,
+        cta_button_text: ctaButtonText,
+        cta_button_color: ctaButtonColor,
+        cta_button_font_color: ctaButtonFontColor,
+      });
       const allLeadIds: string[] = [];
       if (campaign && selectedLists.length > 0) {
         for (const list of selectedLists) {
@@ -210,30 +209,19 @@ export function EmailCampaignEditor({ open, onOpenChange, onCreated }: EmailCamp
 
   useEffect(() => { return () => { if (progressIntervalRef.current) clearInterval(progressIntervalRef.current); }; }, []);
 
-
   return (
     <>
       <Dialog open={open} onOpenChange={(v) => { if (!isSubmitting) { onOpenChange(v); if (!v) resetForm(); } }}>
-        <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0 gap-0">
-          {/* Header */}
+        <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0 gap-0 [&>button.absolute]:hidden">
+          {/* Header — no manual X, using DialogContent's built-in close */}
           <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
-            <div className="flex items-center justify-between">
-              <DialogTitle className="font-display text-lg">Nova Campanha de E-mail</DialogTitle>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => { onOpenChange(false); resetForm(); }}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+            <DialogTitle className="font-display text-lg">Nova Campanha de E-mail</DialogTitle>
           </DialogHeader>
 
           {/* Body — two columns */}
           <div className="flex flex-1 min-h-0 overflow-hidden">
             {/* LEFT: config */}
-            <div className="w-64 shrink-0 border-r border-border overflow-y-auto p-4 space-y-5">
+            <div className="w-72 shrink-0 border-r border-border overflow-y-auto p-4 space-y-5">
               {/* Campaign name */}
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -339,6 +327,80 @@ export function EmailCampaignEditor({ open, onOpenChange, onCreated }: EmailCamp
                   className="text-sm"
                 />
               </div>
+
+              <Separator />
+
+              {/* CTA Button config */}
+              <div className="space-y-3">
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  Botão de CTA
+                </Label>
+                <div className="space-y-2">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground">Texto do botão</Label>
+                    <Input
+                      value={ctaButtonText}
+                      onChange={(e) => setCtaButtonText(e.target.value)}
+                      placeholder="Acessar site"
+                      className="text-sm h-8"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-muted-foreground">Cor fundo</Label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={ctaButtonColor}
+                          onChange={(e) => setCtaButtonColor(e.target.value)}
+                          className="h-8 w-8 rounded border border-border cursor-pointer"
+                        />
+                        <Input
+                          value={ctaButtonColor}
+                          onChange={(e) => setCtaButtonColor(e.target.value)}
+                          className="text-xs h-8 font-mono"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-muted-foreground">Cor texto</Label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={ctaButtonFontColor}
+                          onChange={(e) => setCtaButtonFontColor(e.target.value)}
+                          className="h-8 w-8 rounded border border-border cursor-pointer"
+                        />
+                        <Input
+                          value={ctaButtonFontColor}
+                          onChange={(e) => setCtaButtonFontColor(e.target.value)}
+                          className="text-xs h-8 font-mono"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  {/* Mini preview */}
+                  <div className="rounded-md border border-border bg-muted/20 p-3">
+                    <p className="text-[10px] text-muted-foreground mb-2">Preview:</p>
+                    <a
+                      href="#"
+                      onClick={(e) => e.preventDefault()}
+                      style={{
+                        display: "inline-block",
+                        backgroundColor: ctaButtonColor,
+                        color: ctaButtonFontColor,
+                        padding: "10px 20px",
+                        borderRadius: "6px",
+                        textDecoration: "none",
+                        fontWeight: 600,
+                        fontSize: "13px",
+                      }}
+                    >
+                      {ctaButtonText || "Acessar site"}
+                    </a>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* RIGHT: editor + preview */}
@@ -386,9 +448,7 @@ export function EmailCampaignEditor({ open, onOpenChange, onCreated }: EmailCamp
                       variant="outline"
                       size="sm"
                       className="h-7 text-xs gap-1"
-                      onClick={() => {
-                        setShowTrackingDialog(true);
-                      }}
+                      onClick={() => setShowTrackingDialog(true)}
                     >
                       <Link2 className="h-3 w-3" />
                       Rastrear link
@@ -408,14 +468,13 @@ export function EmailCampaignEditor({ open, onOpenChange, onCreated }: EmailCamp
                 </div>
 
                 {/* Editor tab */}
-                <TabsContent value="editor" className="flex-1 m-0 overflow-hidden">
-                  <Textarea
-                    ref={editorRef}
+                <TabsContent value="editor" className="flex-1 m-0 overflow-auto">
+                  <RichTextEditor
                     value={messageHtml}
-                    onChange={(e) => setMessageHtml(e.target.value)}
-                    placeholder={`Olá {{FIRST_NAME}},\n\nEscreva o corpo do seu email aqui. Use variáveis como {{NAME}} e {{COMPANY}} para personalização.\n\nVocê pode inserir links com o botão "Rastrear link" para monitorar cliques.`}
-                    className="h-full w-full resize-none rounded-none border-0 focus-visible:ring-0 font-mono text-sm"
-                    style={{ minHeight: "100%" }}
+                    onChange={setMessageHtml}
+                    placeholder="Olá {{FIRST_NAME}}, escreva o corpo do seu email aqui..."
+                    className="border-0 rounded-none"
+                    minHeight="100%"
                   />
                 </TabsContent>
 
@@ -435,9 +494,28 @@ export function EmailCampaignEditor({ open, onOpenChange, onCreated }: EmailCamp
                           </p>
                         </div>
                         <div
-                          className="bg-background p-6 prose prose-sm max-w-none text-sm text-foreground whitespace-pre-wrap leading-relaxed [&_a]:text-primary"
+                          className="bg-background p-6 prose prose-sm max-w-none text-sm text-foreground leading-relaxed [&_a]:text-primary"
                           dangerouslySetInnerHTML={{ __html: htmlPreview }}
                         />
+                        {/* CTA button preview */}
+                        <div className="px-6 pb-4">
+                          <a
+                            href="#"
+                            onClick={(e) => e.preventDefault()}
+                            style={{
+                              display: "inline-block",
+                              backgroundColor: ctaButtonColor,
+                              color: ctaButtonFontColor,
+                              padding: "12px 24px",
+                              borderRadius: "8px",
+                              textDecoration: "none",
+                              fontWeight: 600,
+                              fontSize: "14px",
+                            }}
+                          >
+                            {ctaButtonText || "Acessar site"}
+                          </a>
+                        </div>
                       </div>
                       <p className="text-xs text-muted-foreground mt-3 text-center">
                         Preview com dados fictícios — João Silva · Empresa XYZ

@@ -322,6 +322,11 @@ Deno.serve(async (req) => {
                 .replace(/\{\{EMAIL\}\}/gi, leadData.email || "")
                 .replace(/\{\{COMPANY\}\}/gi, leadData.company || "");
 
+              // Convert plain text line breaks to HTML (if not already HTML)
+              if (!rawMessage.includes("<p>") && !rawMessage.includes("<br") && !rawMessage.includes("<div")) {
+                rawMessage = rawMessage.replace(/\n/g, "<br>");
+              }
+
               // Replace {{TRACKING_URL}} token with site URL + contact_id
               const siteBase = Deno.env.get("TRACKING_SITE_URL") || "https://account-magnet.lovable.app";
               const trackingUrlForLead = `${siteBase}/?contact_id=${lead.lead_id}`;
@@ -346,22 +351,12 @@ Deno.serve(async (req) => {
               // Wrap all URLs in message with short tracking codes
               const message = await wrapUrlsInMessage(supabase, rawMessage, campaign.user_id, lead.lead_id, lead.id, SUPABASE_PROJECT_ID);
 
-              // Append email signature if configured
-              const { data: emailSettings } = await supabase
-                .from("email_settings" as any)
-                .select("email_signature")
-                .eq("user_id", campaign.user_id)
-                .single();
-              const signature = (emailSettings as any)?.email_signature;
-              let finalBody = signature
-                ? `${message}\n\n<br/><br/><div style="border-top:1px solid #e2e8f0;padding-top:12px;color:#64748b;font-size:13px;">${signature}</div>`
-                : message;
-
-              // ── Inject tracking page button ──
+              // ── Build CTA tracking button (placed BEFORE signature) ──
+              let ctaBlock = "";
               try {
                 const { data: trackSettings } = await supabase
                   .from("tracking_page_settings")
-                  .select("button_text, button_color, button_font_color, redirect_url")
+                  .select("redirect_url")
                   .eq("user_id", campaign.user_id)
                   .single();
 
@@ -384,27 +379,45 @@ Deno.serve(async (req) => {
                   );
                   const tokenData = await tokenResp.json();
                   if (tokenData.token) {
-                    const trackingPageUrl = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/redirect-link/../../../track/${tokenData.token}`;
-                    // Use the published app URL for the tracking page
                     const appUrl = Deno.env.get("TRACKING_SITE_URL") || "https://account-magnet.lovable.app";
                     const btnUrl = `${appUrl}/track/${tokenData.token}`;
-                    const btnText = trackSettings.button_text || "Acessar conteúdo";
-                    const btnColor = trackSettings.button_color || "#3b82f6";
-                    const btnFontColor = trackSettings.button_font_color || "#ffffff";
+                    // Use per-campaign CTA config
+                    const btnText = campaign.cta_button_text || "Acessar site";
+                    const btnColor = campaign.cta_button_color || "#3b82f6";
+                    const btnFontColor = campaign.cta_button_font_color || "#ffffff";
 
-                    const trackingBlock = `
-                      <div style="text-align:center;margin:24px 0;">
+                    ctaBlock = `
+                      <div style="margin:24px 0;text-align:left;">
                         <a href="${btnUrl}" style="display:inline-block;background-color:${btnColor};color:${btnFontColor};padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:16px;">
                           ${btnText}
                         </a>
                       </div>`;
-                    finalBody = finalBody + trackingBlock;
                     console.log(`[TRACKING] Injected tracking button for lead ${lead.lead_id}`);
                   }
                 }
               } catch (trackErr) {
                 console.error(`[TRACKING] Failed to inject tracking button:`, trackErr.message);
               }
+
+              // Append CTA button to message (before signature)
+              let finalBody = message + ctaBlock;
+
+              // Append email signature if configured
+              const { data: emailSettings } = await supabase
+                .from("email_settings" as any)
+                .select("email_signature")
+                .eq("user_id", campaign.user_id)
+                .single();
+              const signature = (emailSettings as any)?.email_signature;
+              if (signature) {
+                // Convert \n to <br> in signature too
+                let sigHtml = signature;
+                if (!sigHtml.includes("<p>") && !sigHtml.includes("<br") && !sigHtml.includes("<div")) {
+                  sigHtml = sigHtml.replace(/\n/g, "<br>");
+                }
+                finalBody += `<br/><br/><div style="border-top:1px solid #e2e8f0;padding-top:12px;color:#64748b;font-size:13px;">${sigHtml}</div>`;
+              }
+
 
               try {
                 console.log(`[SEND] Email to ${leadData.email} via account ${channelAccountId}`);

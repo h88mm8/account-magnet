@@ -90,6 +90,9 @@ export type Database = {
         Row: {
           channel: string
           created_at: string
+          cta_button_color: string | null
+          cta_button_font_color: string | null
+          cta_button_text: string | null
           daily_limit: number
           id: string
           linkedin_type: string | null
@@ -111,6 +114,9 @@ export type Database = {
         Insert: {
           channel: string
           created_at?: string
+          cta_button_color?: string | null
+          cta_button_font_color?: string | null
+          cta_button_text?: string | null
           daily_limit?: number
           id?: string
           linkedin_type?: string | null
@@ -132,6 +138,9 @@ export type Database = {
         Update: {
           channel?: string
           created_at?: string
+          cta_button_color?: string | null
+          cta_button_font_color?: string | null
+          cta_button_text?: string | null
           daily_limit?: number
           id?: string
           linkedin_type?: string | null
