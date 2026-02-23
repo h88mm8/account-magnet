@@ -465,6 +465,7 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
   const { data: leads, isLoading } = useCampaignLeads(campaign.id);
   const [leadData, setLeadData] = useState<Record<string, { name: string; email: string | null; phone: string | null }>>({});
   const [clicksByLead, setClicksByLead] = useState<Record<string, number>>({});
+  const [emailClickStats, setEmailClickStats] = useState<{ total: number; uniqueLeads: number }>({ total: 0, uniqueLeads: 0 });
   const Icon = channelIcons[campaign.channel] || Send;
 
   useEffect(() => {
@@ -488,7 +489,19 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
           setClicksByLead(clicks);
         }
       });
-  }, [leads]);
+
+    // Fetch email_clicks stats for this campaign
+    supabase
+      .from("email_clicks")
+      .select("id, lead_id, is_unique")
+      .eq("campaign_id", campaign.id)
+      .then(({ data }) => {
+        if (data) {
+          const uniqueLeadIds = new Set(data.filter((c) => c.is_unique).map((c) => c.lead_id));
+          setEmailClickStats({ total: data.length, uniqueLeads: uniqueLeadIds.size });
+        }
+      });
+  }, [leads, campaign.id]);
 
   const statusColors: Record<string, string> = {
     pending: "bg-muted text-muted-foreground",
@@ -752,12 +765,12 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
                   },
                   {
                     label: "Taxa de cliques",
-                    value: leads && leads.length > 0 ? Math.round((clickedLeads.length / leads.length) * 100) : 0,
+                    value: campaign.total_sent > 0 ? Math.round((emailClickStats.uniqueLeads / campaign.total_sent) * 100) : 0,
                     icon: MousePointerClick,
-                    desc: `${clickedLeads.length} leads clicaram em links`
+                    desc: `${emailClickStats.uniqueLeads} leads únicos / ${emailClickStats.total} cliques totais`
                   },
                   {
-                    label: "Cliques (tracking)",
+                    label: "Cliques (botão CTA)",
                     value: campaign.total_sent > 0 ? Math.round(((campaign as any).total_clicked || 0) / campaign.total_sent * 100) : 0,
                     icon: MousePointerClick,
                     desc: `${(campaign as any).total_clicked || 0} clicaram no botão do email`
