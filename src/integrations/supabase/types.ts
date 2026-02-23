@@ -229,6 +229,45 @@ export type Database = {
         }
         Relationships: []
       }
+      email_clicks: {
+        Row: {
+          campaign_id: string
+          clicked_at: string
+          id: string
+          ip_address: string | null
+          is_unique: boolean
+          lead_id: string
+          original_url: string
+          short_code: string | null
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          campaign_id: string
+          clicked_at?: string
+          id?: string
+          ip_address?: string | null
+          is_unique?: boolean
+          lead_id: string
+          original_url: string
+          short_code?: string | null
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string
+          clicked_at?: string
+          id?: string
+          ip_address?: string | null
+          is_unique?: boolean
+          lead_id?: string
+          original_url?: string
+          short_code?: string | null
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       email_settings: {
         Row: {
           created_at: string
