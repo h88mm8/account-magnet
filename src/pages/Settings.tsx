@@ -352,13 +352,31 @@ const Settings = () => {
               </div>
               <Separator />
               <div className="space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Buscas realizadas este mês</span>
-                  <span className="font-medium text-foreground">127 / 500</span>
+                <div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Buscas realizadas</span>
+                    <span className="font-medium text-foreground">127 / 500</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground/70 mt-0.5">1 crédito por página retornada</p>
                 </div>
                 <div className="h-2 rounded-full bg-muted">
                   <div className="h-2 rounded-full bg-primary" style={{ width: "25.4%" }} />
                 </div>
+                <div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Enriquecimento Email</span>
+                    <span className="font-medium text-foreground">—</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground/70 mt-0.5">1 crédito por email retornado</p>
+                </div>
+                <div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Enriquecimento Celular</span>
+                    <span className="font-medium text-foreground">—</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground/70 mt-0.5">8 créditos por telefone retornado</p>
+                </div>
+                <Separator className="my-1" />
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Contatos exportados</span>
                   <span className="font-medium text-foreground">1,234 / 10,000</span>
