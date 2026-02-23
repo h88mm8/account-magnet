@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Play, Pause, Mail, MessageSquare, Linkedin, Send, Users, CheckCircle, XCircle, Reply, AlertTriangle, Trash2, ChevronRight } from "lucide-react";
+import { Plus, Play, Pause, Mail, MessageSquare, Linkedin, Send, CheckCircle, XCircle, Reply, AlertTriangle, Trash2, ChevronRight } from "lucide-react";
 import { EmailCampaignEditor } from "@/components/EmailCampaignEditor";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -509,7 +509,7 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
   };
 
   const repliedLeads = leads?.filter((l) => l.replied_at) || [];
-  const acceptedLeads = leads?.filter((l) => l.accepted_at) || [];
+  
   const totalRate = leads && leads.length > 0
     ? Math.round((repliedLeads.length / leads.length) * 100)
     : 0;
@@ -530,12 +530,11 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
         </DialogHeader>
 
         {/* KPI summary row */}
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 shrink-0">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 shrink-0">
           {[
             { label: "Enviados", val: campaign.total_sent, icon: Send },
             { label: "Entregues", val: campaign.total_delivered, icon: CheckCircle },
             { label: "Respondidos", val: campaign.total_replied, icon: Reply },
-            { label: "Aceitos", val: campaign.total_accepted, icon: Users },
             { label: "Falhas", val: campaign.total_failed, icon: XCircle },
           ].map((s) => (
             <div key={s.label} className="rounded-lg border border-border p-2.5 text-center">
@@ -554,9 +553,6 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
             </TabsTrigger>
             <TabsTrigger value="replies">
               Respostas {repliedLeads.length > 0 ? `(${repliedLeads.length})` : ""}
-            </TabsTrigger>
-            <TabsTrigger value="accepted">
-              Aceitos {acceptedLeads.length > 0 ? `(${acceptedLeads.length})` : ""}
             </TabsTrigger>
             <TabsTrigger value="metrics">
               Métricas
@@ -646,48 +642,6 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
             )}
           </TabsContent>
 
-          {/* Accepted tab */}
-          <TabsContent value="accepted" className="flex-1 overflow-auto min-h-0 mt-3">
-            {isLoading ? (
-              <Skeleton className="h-40 w-full" />
-            ) : acceptedLeads.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <Users className="h-8 w-8 text-muted-foreground/30 mb-2" />
-                <p className="text-sm text-muted-foreground">Nenhum convite aceito ainda.</p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Lead</TableHead>
-                    <TableHead>Enviado em</TableHead>
-                    <TableHead>Aceito em</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {acceptedLeads.map((l) => (
-                    <TableRow key={l.id}>
-                      <TableCell>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{leadData[l.lead_id]?.name || l.lead_id.slice(0, 8) + "..."}</p>
-                          {leadData[l.lead_id]?.email && (
-                            <p className="text-xs text-muted-foreground">{leadData[l.lead_id].email}</p>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {l.sent_at ? new Date(l.sent_at).toLocaleString("pt-BR") : "—"}
-                      </TableCell>
-                      <TableCell className="text-xs text-foreground font-medium">
-                        {l.accepted_at ? new Date(l.accepted_at).toLocaleString("pt-BR") : "—"}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </TabsContent>
-
           {/* Metrics tab */}
           <TabsContent value="metrics" className="flex-1 overflow-auto min-h-0 mt-3">
             <div className="space-y-4">
@@ -720,12 +674,6 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
                     value: campaign.total_sent > 0 ? Math.round((campaign.total_replied / campaign.total_sent) * 100) : 0,
                     icon: Reply,
                     desc: `${campaign.total_replied} respondidos`
-                  },
-                  {
-                    label: "Taxa de aceitação",
-                    value: campaign.total_sent > 0 ? Math.round((campaign.total_accepted / campaign.total_sent) * 100) : 0,
-                    icon: Users,
-                    desc: `${campaign.total_accepted} aceitos`
                   },
                   {
                     label: "Taxa de falha",
