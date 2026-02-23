@@ -293,7 +293,7 @@ Deno.serve(async (req) => {
         try {
           const { data: leadData } = await supabase
             .from("prospect_list_items")
-            .select("name, email, phone, linkedin_url, provider_id")
+            .select("name, email, phone, linkedin_url, provider_id, company")
             .eq("id", lead.lead_id)
             .single();
 
