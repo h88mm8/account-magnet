@@ -310,7 +310,19 @@ Deno.serve(async (req) => {
           if (campaign.channel === "email") {
             if (!leadData.email) {
               errorMsg = "Sem endereço de email";
-            } else if (!UNIPILE_BASE_URL || !UNIPILE_API_KEY || !channelAccountId) {
+            } else {
+              // Check blocklist before sending
+              const { data: blocked } = await supabase
+                .from("email_blocklist")
+                .select("id, reason, bounce_count")
+                .eq("user_id", campaign.user_id)
+                .eq("email", leadData.email.toLowerCase().trim())
+                .maybeSingle();
+
+              if (blocked && blocked.bounce_count >= 3) {
+                errorMsg = `Email bloqueado (${blocked.reason}, ${blocked.bounce_count} falhas)`;
+                console.log(`[BLOCKLIST] Skipping ${leadData.email}: ${errorMsg}`);
+              } else if (!UNIPILE_BASE_URL || !UNIPILE_API_KEY || !channelAccountId) {
               errorMsg = "Provedor de email não configurado";
             } else {
               // Personalise template variables
@@ -441,11 +453,42 @@ Deno.serve(async (req) => {
                   const errBody = await resp.text().catch(() => "");
                   errorMsg = `Email API error [${resp.status}]: ${errBody.slice(0, 200)}`;
                   console.error(`[SEND_FAIL] ${errorMsg}`);
+
+                  // Auto-blocklist: upsert bounce count, block at 3+
+                  if (leadData.email) {
+                    try {
+                      const emailLower = leadData.email.toLowerCase().trim();
+                      const { data: existing } = await supabase
+                        .from("email_blocklist")
+                        .select("id, bounce_count")
+                        .eq("user_id", campaign.user_id)
+                        .eq("email", emailLower)
+                        .maybeSingle();
+
+                      if (existing) {
+                        await supabase.from("email_blocklist").update({
+                          bounce_count: existing.bounce_count + 1,
+                          reason: existing.bounce_count + 1 >= 3 ? "bounce_auto" : "bounce",
+                        }).eq("id", existing.id);
+                      } else {
+                        await supabase.from("email_blocklist").insert({
+                          user_id: campaign.user_id,
+                          email: emailLower,
+                          reason: "bounce",
+                          bounce_count: 1,
+                        });
+                      }
+                      console.log(`[BLOCKLIST] Registered bounce for ${emailLower}`);
+                    } catch (blErr) {
+                      console.error(`[BLOCKLIST] Failed to register bounce:`, blErr.message);
+                    }
+                  }
                 }
               } catch (e) {
                 errorMsg = `Email request failed: ${e.message}`;
                 console.error(`[SEND_FAIL] ${errorMsg}`);
               }
+            }
             }
           }
 

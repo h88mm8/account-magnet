@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { User, Link2, Bell, CreditCard, MessageCircle, RefreshCw, Linkedin, Mail, Pen, MousePointerClick, Upload, Palette } from "lucide-react";
+import { User, Link2, Bell, CreditCard, MessageCircle, RefreshCw, Linkedin, Mail, Pen, MousePointerClick, Upload, Palette, ShieldBan, Trash2, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -308,6 +308,9 @@ const Settings = () => {
             >
               {saveEmailSettings.isPending ? "Salvando..." : "Salvar configurações de email"}
             </Button>
+
+            {/* Blocklist */}
+            <BlocklistCard />
           </div>
         </TabsContent>
 
@@ -590,6 +593,87 @@ function TrackingPageSettings() {
         {saveMutation.isPending ? "Salvando..." : "Salvar configurações de tracking"}
       </Button>
     </div>
+  );
+}
+
+function BlocklistCard() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: blocklist, isLoading } = useQuery({
+    queryKey: ["email-blocklist"],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data } = await supabase
+        .from("email_blocklist" as any)
+        .select("*")
+        .eq("user_id", user.id)
+        .order("blocked_at", { ascending: false });
+      return (data as unknown as { id: string; email: string; reason: string; bounce_count: number; blocked_at: string }[]) || [];
+    },
+    enabled: !!user,
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("email_blocklist" as any).delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["email-blocklist"] });
+      toast({ title: "Email desbloqueado" });
+    },
+  });
+
+  return (
+    <Card className="border border-border shadow-none">
+      <CardHeader>
+        <CardTitle className="font-display text-lg flex items-center gap-2">
+          <ShieldBan className="h-5 w-5 text-destructive" />
+          Blocklist de E-mails
+        </CardTitle>
+        <CardDescription>
+          Emails bloqueados automaticamente após 3+ falhas de entrega (bounces). Clique no ícone para desbloquear.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Carregando...
+          </div>
+        ) : !blocklist || blocklist.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4">Nenhum email bloqueado. 🎉</p>
+        ) : (
+          <div className="space-y-1 max-h-64 overflow-y-auto">
+            {blocklist.map((item) => (
+              <div key={item.id} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="font-mono text-xs truncate">{item.email}</span>
+                  <Badge variant="outline" className="text-[10px] shrink-0">
+                    {item.bounce_count} bounce{item.bounce_count > 1 ? "s" : ""}
+                  </Badge>
+                  {item.bounce_count >= 3 && (
+                    <Badge variant="destructive" className="text-[10px] shrink-0">Bloqueado</Badge>
+                  )}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => removeMutation.mutate(item.id)}
+                  disabled={removeMutation.isPending}
+                  title="Desbloquear"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
