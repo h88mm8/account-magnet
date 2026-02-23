@@ -496,6 +496,7 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
     sent: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
     delivered: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
     opened: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+    clicked: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
     replied: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
     failed: "bg-destructive/10 text-destructive",
     accepted: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300",
@@ -508,6 +509,7 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
     sent: "Enviado",
     delivered: "Entregue",
     opened: "Aberto",
+    clicked: "Clicado",
     replied: "Respondido",
     failed: "Falha",
     accepted: "Aceito",
@@ -536,11 +538,12 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
         </DialogHeader>
 
         {/* KPI summary row */}
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 shrink-0">
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-7 shrink-0">
           {[
             { label: "Enviados", val: campaign.total_sent, icon: Send },
             { label: "Entregues", val: campaign.total_delivered, icon: CheckCircle },
             { label: "Abertos", val: campaign.total_opened, icon: Eye },
+            { label: "Clicados", val: (campaign as any).total_clicked || 0, icon: MousePointerClick },
             { label: "Respondidos", val: campaign.total_replied, icon: Reply },
             { label: "Aceitos", val: campaign.total_accepted, icon: Users },
             { label: "Falhas", val: campaign.total_failed, icon: XCircle },
@@ -752,6 +755,12 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
                     value: leads && leads.length > 0 ? Math.round((clickedLeads.length / leads.length) * 100) : 0,
                     icon: MousePointerClick,
                     desc: `${clickedLeads.length} leads clicaram em links`
+                  },
+                  {
+                    label: "Cliques (tracking)",
+                    value: campaign.total_sent > 0 ? Math.round(((campaign as any).total_clicked || 0) / campaign.total_sent * 100) : 0,
+                    icon: MousePointerClick,
+                    desc: `${(campaign as any).total_clicked || 0} clicaram no botão do email`
                   },
                   {
                     label: "Taxa de falha",
