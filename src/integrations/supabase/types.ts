@@ -199,6 +199,36 @@ export type Database = {
         }
         Relationships: []
       }
+      email_blocklist: {
+        Row: {
+          blocked_at: string
+          bounce_count: number
+          created_at: string
+          email: string
+          id: string
+          reason: string
+          user_id: string
+        }
+        Insert: {
+          blocked_at?: string
+          bounce_count?: number
+          created_at?: string
+          email: string
+          id?: string
+          reason?: string
+          user_id: string
+        }
+        Update: {
+          blocked_at?: string
+          bounce_count?: number
+          created_at?: string
+          email?: string
+          id?: string
+          reason?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       email_settings: {
         Row: {
           created_at: string

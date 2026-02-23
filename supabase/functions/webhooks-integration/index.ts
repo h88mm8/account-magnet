@@ -165,6 +165,49 @@ Deno.serve(async (req) => {
       "OPENED",
     ].some((e) => normalizedEvent.includes(e) && !isEmailReply && !isEmailDelivered);
 
+    const isEmailBounced = [
+      "EMAILBOUNCED",
+      "EMAILFAILED",
+      "MESSAGEFAILED",
+      "BOUNCED",
+      "BOUNCE",
+      "HARD_BOUNCE",
+      "SOFT_BOUNCE",
+    ].some((e) => normalizedEvent.includes(e));
+
+    // ── Handle bounce → auto-blocklist ──
+    if (isEmailBounced && provider === "email" && userId) {
+      console.log(`[WEBHOOK-INTEGRATION] Email bounce event: ${event} for user ${userId}`);
+      const bouncedEmail = (data.to || data.recipient || data.email || "").toLowerCase().trim();
+      if (bouncedEmail) {
+        try {
+          const { data: existing } = await supabase
+            .from("email_blocklist")
+            .select("id, bounce_count")
+            .eq("user_id", userId)
+            .eq("email", bouncedEmail)
+            .maybeSingle();
+
+          if (existing) {
+            await supabase.from("email_blocklist").update({
+              bounce_count: existing.bounce_count + 1,
+              reason: existing.bounce_count + 1 >= 3 ? "bounce_auto" : "bounce",
+            }).eq("id", existing.id);
+          } else {
+            await supabase.from("email_blocklist").insert({
+              user_id: userId,
+              email: bouncedEmail,
+              reason: "bounce",
+              bounce_count: 1,
+            });
+          }
+          console.log(`[WEBHOOK-INTEGRATION] Bounce registered for ${bouncedEmail} (user ${userId})`);
+        } catch (blErr) {
+          console.error(`[WEBHOOK-INTEGRATION] Failed to register bounce:`, blErr.message);
+        }
+      }
+    }
+
     if ((isEmailReply || isEmailDelivered || isEmailOpened) && provider === "email") {
       console.log(`[WEBHOOK-INTEGRATION] Email event: ${event} for user ${userId}`);
 
