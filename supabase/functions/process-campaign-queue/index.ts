@@ -448,7 +448,28 @@ Deno.serve(async (req) => {
                 });
                 if (resp.ok) {
                   success = true;
-                  console.log(`[SEND] Email sent successfully`);
+                  // Extract and store Unipile message ID for webhook matching
+                  try {
+                    const emailResp = await resp.json();
+                    const unipileMessageId = emailResp?.id || emailResp?.message_id || emailResp?.object_id || "";
+                    if (unipileMessageId) {
+                      await supabase.from("messages_sent").insert({
+                        user_id: campaign.user_id,
+                        lead_id: lead.lead_id,
+                        campaign_id: campaign.id,
+                        campaign_lead_id: lead.id,
+                        content: campaign.subject || "",
+                        message_type: "email",
+                        status: "sent",
+                        unipile_message_id: unipileMessageId,
+                      });
+                      console.log(`[SEND] Email sent successfully, unipile_msg_id=${unipileMessageId}`);
+                    } else {
+                      console.log(`[SEND] Email sent successfully (no message ID in response)`);
+                    }
+                  } catch (parseErr) {
+                    console.log(`[SEND] Email sent successfully (response parse failed: ${parseErr.message})`);
+                  }
                 } else {
                   const errBody = await resp.text().catch(() => "");
                   errorMsg = `Email API error [${resp.status}]: ${errBody.slice(0, 200)}`;
