@@ -85,11 +85,14 @@ export function useCreateCampaign() {
       subject?: string | null;
       message_template?: string | null;
       daily_limit?: number;
+      cta_button_text?: string;
+      cta_button_color?: string;
+      cta_button_font_color?: string;
     }) => {
       if (!user) throw new Error("Not authenticated");
       const { data, error } = await supabase
         .from("campaigns")
-        .insert({ ...campaign, user_id: user.id })
+        .insert({ ...campaign, user_id: user.id } as any)
         .select()
         .single();
       if (error) throw error;

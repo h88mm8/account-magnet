@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/RichTextEditor";
 import { useWhatsAppConnection } from "@/hooks/useWhatsAppConnection";
 import { useIntegration } from "@/hooks/useIntegrations";
 import { WhatsAppConnectModal } from "@/components/WhatsAppConnect";
@@ -237,12 +237,11 @@ const Settings = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                <Textarea
+                <RichTextEditor
                   value={signature}
-                  onChange={(e) => setSignature(e.target.value)}
-                  placeholder={"Atenciosamente,\nSeu Nome\nCargo · Empresa\nTelefone"}
-                  rows={5}
-                  className="font-mono text-sm"
+                  onChange={setSignature}
+                  placeholder="Atenciosamente, Seu Nome..."
+                  minHeight="120px"
                 />
                 <p className="text-xs text-muted-foreground">
                   Você pode usar HTML básico para formatar sua assinatura.
