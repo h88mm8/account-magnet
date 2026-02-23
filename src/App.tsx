@@ -18,6 +18,7 @@ import Campaigns from "./pages/Campaigns";
 import ApolloSearch from "./pages/ApolloSearch";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
+import TrackingPage from "./pages/TrackingPage";
 
 const queryClient = new QueryClient();
 
@@ -69,6 +70,7 @@ const App = () => (
         <AuthProvider>
           <Routes>
             <Route path="/auth" element={<Auth />} />
+            <Route path="/track/:token" element={<TrackingPage />} />
             <Route path="/*" element={<ProtectedLayout />} />
           </Routes>
         </AuthProvider>

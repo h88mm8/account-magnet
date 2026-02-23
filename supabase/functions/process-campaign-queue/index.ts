@@ -353,9 +353,58 @@ Deno.serve(async (req) => {
                 .eq("user_id", campaign.user_id)
                 .single();
               const signature = (emailSettings as any)?.email_signature;
-              const finalBody = signature
+              let finalBody = signature
                 ? `${message}\n\n<br/><br/><div style="border-top:1px solid #e2e8f0;padding-top:12px;color:#64748b;font-size:13px;">${signature}</div>`
                 : message;
+
+              // ── Inject tracking page button ──
+              try {
+                const { data: trackSettings } = await supabase
+                  .from("tracking_page_settings")
+                  .select("button_text, button_color, button_font_color, redirect_url")
+                  .eq("user_id", campaign.user_id)
+                  .single();
+
+                if (trackSettings?.redirect_url) {
+                  // Generate HMAC token
+                  const tokenResp = await fetch(
+                    `${Deno.env.get("SUPABASE_URL")}/functions/v1/track-click?action=generate`,
+                    {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                      },
+                      body: JSON.stringify({
+                        user_id: campaign.user_id,
+                        campaign_id: campaign.id,
+                        lead_id: lead.lead_id,
+                      }),
+                    }
+                  );
+                  const tokenData = await tokenResp.json();
+                  if (tokenData.token) {
+                    const trackingPageUrl = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/redirect-link/../../../track/${tokenData.token}`;
+                    // Use the published app URL for the tracking page
+                    const appUrl = Deno.env.get("TRACKING_SITE_URL") || "https://account-magnet.lovable.app";
+                    const btnUrl = `${appUrl}/track/${tokenData.token}`;
+                    const btnText = trackSettings.button_text || "Acessar conteúdo";
+                    const btnColor = trackSettings.button_color || "#3b82f6";
+                    const btnFontColor = trackSettings.button_font_color || "#ffffff";
+
+                    const trackingBlock = `
+                      <div style="text-align:center;margin:24px 0;">
+                        <a href="${btnUrl}" style="display:inline-block;background-color:${btnColor};color:${btnFontColor};padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:16px;">
+                          ${btnText}
+                        </a>
+                      </div>`;
+                    finalBody = finalBody + trackingBlock;
+                    console.log(`[TRACKING] Injected tracking button for lead ${lead.lead_id}`);
+                  }
+                }
+              } catch (trackErr) {
+                console.error(`[TRACKING] Failed to inject tracking button:`, trackErr.message);
+              }
 
               try {
                 console.log(`[SEND] Email to ${leadData.email} via account ${channelAccountId}`);

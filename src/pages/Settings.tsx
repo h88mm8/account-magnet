@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { User, Link2, Bell, CreditCard, MessageCircle, RefreshCw, Linkedin, Mail, Pen } from "lucide-react";
+import { useState, useEffect } from "react";
+import { User, Link2, Bell, CreditCard, MessageCircle, RefreshCw, Linkedin, Mail, Pen, MousePointerClick, Upload, Palette } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -116,6 +116,10 @@ const Settings = () => {
           <TabsTrigger value="subscription" className="gap-2">
             <CreditCard className="h-4 w-4" />
             Assinatura
+          </TabsTrigger>
+          <TabsTrigger value="tracking" className="gap-2">
+            <MousePointerClick className="h-4 w-4" />
+            Tracking
           </TabsTrigger>
         </TabsList>
 
@@ -389,10 +393,206 @@ const Settings = () => {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Tracking Page */}
+        <TabsContent value="tracking">
+          <TrackingPageSettings />
+        </TabsContent>
       </Tabs>
     </div>
   );
 };
+
+function TrackingPageSettings() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: trackingSettings, isLoading } = useQuery({
+    queryKey: ["tracking-page-settings"],
+    queryFn: async () => {
+      if (!user) return null;
+      const { data } = await supabase
+        .from("tracking_page_settings" as any)
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+      return data as any;
+    },
+    enabled: !!user,
+  });
+
+  const [bgColor, setBgColor] = useState("#f8fafc");
+  const [buttonText, setButtonText] = useState("Acessar conteúdo");
+  const [buttonColor, setButtonColor] = useState("#3b82f6");
+  const [buttonFontColor, setButtonFontColor] = useState("#ffffff");
+  const [redirectUrl, setRedirectUrl] = useState("");
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    if (trackingSettings) {
+      setBgColor(trackingSettings.background_color || "#f8fafc");
+      setButtonText(trackingSettings.button_text || "Acessar conteúdo");
+      setButtonColor(trackingSettings.button_color || "#3b82f6");
+      setButtonFontColor(trackingSettings.button_font_color || "#ffffff");
+      setRedirectUrl(trackingSettings.redirect_url || "");
+      setLogoUrl(trackingSettings.logo_url || null);
+    }
+  }, [trackingSettings]);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    setUploading(true);
+    const path = `${user.id}/logo-${Date.now()}.${file.name.split(".").pop()}`;
+    const { error } = await supabase.storage.from("tracking-logos").upload(path, file, { upsert: true });
+    if (error) {
+      toast({ title: "Erro ao enviar logo", description: error.message, variant: "destructive" });
+    } else {
+      const { data: urlData } = supabase.storage.from("tracking-logos").getPublicUrl(path);
+      setLogoUrl(urlData.publicUrl);
+      toast({ title: "Logo enviada!" });
+    }
+    setUploading(false);
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!user) throw new Error("Not authenticated");
+      const payload = {
+        user_id: user.id,
+        background_color: bgColor,
+        button_text: buttonText,
+        button_color: buttonColor,
+        button_font_color: buttonFontColor,
+        redirect_url: redirectUrl || null,
+        logo_url: logoUrl,
+      };
+      const { error } = await supabase
+        .from("tracking_page_settings" as any)
+        .upsert(payload, { onConflict: "user_id" });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tracking-page-settings"] });
+      toast({ title: "Configurações de tracking salvas!" });
+    },
+    onError: (e: any) => {
+      toast({ title: "Erro ao salvar", description: e.message, variant: "destructive" });
+    },
+  });
+
+  if (isLoading) {
+    return <div className="flex justify-center py-12"><div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary" /></div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card className="border border-border shadow-none">
+        <CardHeader>
+          <CardTitle className="font-display text-lg flex items-center gap-2">
+            <Palette className="h-5 w-5" />
+            Página de Tracking de Email
+          </CardTitle>
+          <CardDescription>
+            Configure a aparência da página intermediária exibida quando o lead clica no botão do email.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {/* Logo upload */}
+          <div className="space-y-2">
+            <Label>Logo</Label>
+            <div className="flex items-center gap-4">
+              {logoUrl ? (
+                <img src={logoUrl} alt="Logo" className="h-12 w-auto rounded border border-border object-contain" />
+              ) : (
+                <div className="flex h-12 w-20 items-center justify-center rounded border border-dashed border-border">
+                  <Upload className="h-4 w-4 text-muted-foreground" />
+                </div>
+              )}
+              <div>
+                <Input
+                  type="file"
+                  accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                  onChange={handleLogoUpload}
+                  disabled={uploading}
+                  className="text-xs"
+                />
+                <p className="text-xs text-muted-foreground mt-1">PNG, JPG, SVG ou WEBP. Recomendado: 200×60px.</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Colors */}
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="space-y-2">
+              <Label>Cor de fundo</Label>
+              <div className="flex items-center gap-2">
+                <input type="color" value={bgColor} onChange={(e) => setBgColor(e.target.value)} className="h-9 w-10 rounded border border-border cursor-pointer" />
+                <Input value={bgColor} onChange={(e) => setBgColor(e.target.value)} className="font-mono text-xs" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Cor do botão</Label>
+              <div className="flex items-center gap-2">
+                <input type="color" value={buttonColor} onChange={(e) => setButtonColor(e.target.value)} className="h-9 w-10 rounded border border-border cursor-pointer" />
+                <Input value={buttonColor} onChange={(e) => setButtonColor(e.target.value)} className="font-mono text-xs" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Cor da fonte do botão</Label>
+              <div className="flex items-center gap-2">
+                <input type="color" value={buttonFontColor} onChange={(e) => setButtonFontColor(e.target.value)} className="h-9 w-10 rounded border border-border cursor-pointer" />
+                <Input value={buttonFontColor} onChange={(e) => setButtonFontColor(e.target.value)} className="font-mono text-xs" />
+              </div>
+            </div>
+          </div>
+
+          {/* Button text */}
+          <div className="space-y-2">
+            <Label>Texto do botão</Label>
+            <Input value={buttonText} onChange={(e) => setButtonText(e.target.value)} placeholder="Acessar conteúdo" />
+          </div>
+
+          {/* Redirect URL */}
+          <div className="space-y-2">
+            <Label>URL de redirecionamento final</Label>
+            <Input value={redirectUrl} onChange={(e) => setRedirectUrl(e.target.value)} placeholder="https://seusite.com.br" />
+            <p className="text-xs text-muted-foreground">O lead será redirecionado para esta URL após clicar no botão.</p>
+          </div>
+
+          {/* Preview */}
+          <div className="space-y-2">
+            <Label>Preview</Label>
+            <div className="rounded-lg border border-border overflow-hidden">
+              <div className="flex items-center justify-center p-8" style={{ backgroundColor: bgColor, minHeight: 160 }}>
+                <div className="flex flex-col items-center gap-4">
+                  {logoUrl && <img src={logoUrl} alt="Preview logo" className="max-h-16 w-auto object-contain" />}
+                  <button
+                    className="rounded-lg px-6 py-3 font-semibold shadow-md"
+                    style={{ backgroundColor: buttonColor, color: buttonFontColor }}
+                    disabled
+                  >
+                    {buttonText}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Button
+        onClick={() => saveMutation.mutate()}
+        disabled={saveMutation.isPending}
+        size="sm"
+      >
+        {saveMutation.isPending ? "Salvando..." : "Salvar configurações de tracking"}
+      </Button>
+    </div>
+  );
+}
 
 function IntegrationCard({
   icon,

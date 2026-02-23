@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           accepted_at: string | null
           campaign_id: string
+          clicked_at: string | null
           created_at: string
           delivered_at: string | null
           error_message: string | null
@@ -35,6 +36,7 @@ export type Database = {
         Insert: {
           accepted_at?: string | null
           campaign_id: string
+          clicked_at?: string | null
           created_at?: string
           delivered_at?: string | null
           error_message?: string | null
@@ -52,6 +54,7 @@ export type Database = {
         Update: {
           accepted_at?: string | null
           campaign_id?: string
+          clicked_at?: string | null
           created_at?: string
           delivered_at?: string | null
           error_message?: string | null
@@ -96,6 +99,7 @@ export type Database = {
           status: string
           subject: string | null
           total_accepted: number
+          total_clicked: number
           total_delivered: number
           total_failed: number
           total_opened: number
@@ -116,6 +120,7 @@ export type Database = {
           status?: string
           subject?: string | null
           total_accepted?: number
+          total_clicked?: number
           total_delivered?: number
           total_failed?: number
           total_opened?: number
@@ -136,6 +141,7 @@ export type Database = {
           status?: string
           subject?: string | null
           total_accepted?: number
+          total_clicked?: number
           total_delivered?: number
           total_failed?: number
           total_opened?: number
@@ -684,6 +690,45 @@ export type Database = {
           id?: string
           list_type?: string
           name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      tracking_page_settings: {
+        Row: {
+          background_color: string
+          button_color: string
+          button_font_color: string
+          button_text: string
+          created_at: string
+          id: string
+          logo_url: string | null
+          redirect_url: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          background_color?: string
+          button_color?: string
+          button_font_color?: string
+          button_text?: string
+          created_at?: string
+          id?: string
+          logo_url?: string | null
+          redirect_url?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          background_color?: string
+          button_color?: string
+          button_font_color?: string
+          button_text?: string
+          created_at?: string
+          id?: string
+          logo_url?: string | null
+          redirect_url?: string | null
           updated_at?: string
           user_id?: string
         }
