@@ -10,7 +10,6 @@ export type RealMetrics = {
   activeCampaigns: number;
   totalSent: number;
   totalReplied: number;
-  totalLinkClicks: number;
 };
 
 export type MonthlyData = {
@@ -38,14 +37,13 @@ export type TopLeadClick = {
 
 async function fetchMetrics(): Promise<RealMetrics> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { companiesSaved: 0, contactsSaved: 0, activeLists: 0, conversionRate: 0, totalCampaigns: 0, activeCampaigns: 0, totalSent: 0, totalReplied: 0, totalLinkClicks: 0 };
+  if (!user) return { companiesSaved: 0, contactsSaved: 0, activeLists: 0, conversionRate: 0, totalCampaigns: 0, activeCampaigns: 0, totalSent: 0, totalReplied: 0 };
 
-  const [accountItems, leadItems, lists, campaigns, linkClicks] = await Promise.all([
+  const [accountItems, leadItems, lists, campaigns] = await Promise.all([
     supabase.from("prospect_list_items").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("item_type", "account"),
     supabase.from("prospect_list_items").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("item_type", "lead"),
     supabase.from("prospect_lists").select("id", { count: "exact", head: true }).eq("user_id", user.id),
     supabase.from("campaigns").select("status, total_sent, total_replied").eq("user_id", user.id),
-    supabase.from("link_clicks").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("is_unique", true),
   ]);
 
   const companies = accountItems.count ?? 0;
@@ -63,7 +61,6 @@ async function fetchMetrics(): Promise<RealMetrics> {
     activeCampaigns: campaignList.filter((c) => c.status === "active").length,
     totalSent: campaignList.reduce((s, c) => s + (c.total_sent || 0), 0),
     totalReplied: campaignList.reduce((s, c) => s + (c.total_replied || 0), 0),
-    totalLinkClicks: linkClicks.count ?? 0,
   };
 }
 

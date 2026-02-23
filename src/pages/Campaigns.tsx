@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Play, Pause, Mail, MessageSquare, Linkedin, Send, Users, CheckCircle, XCircle, Eye, Reply, AlertTriangle, Trash2, MousePointerClick, ChevronRight } from "lucide-react";
+import { Plus, Play, Pause, Mail, MessageSquare, Linkedin, Send, Users, CheckCircle, XCircle, Reply, AlertTriangle, Trash2, ChevronRight } from "lucide-react";
 import { EmailCampaignEditor } from "@/components/EmailCampaignEditor";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -464,8 +464,6 @@ const Campaigns = () => {
 function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: () => void }) {
   const { data: leads, isLoading } = useCampaignLeads(campaign.id);
   const [leadData, setLeadData] = useState<Record<string, { name: string; email: string | null; phone: string | null }>>({});
-  const [clicksByLead, setClicksByLead] = useState<Record<string, number>>({});
-  const [emailClickStats, setEmailClickStats] = useState<{ total: number; uniqueLeads: number }>({ total: 0, uniqueLeads: 0 });
   const Icon = channelIcons[campaign.channel] || Send;
 
   useEffect(() => {
@@ -475,30 +473,15 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
     // Fetch lead details
     supabase
       .from("prospect_list_items")
-      .select("id, name, email, phone, link_clicks_count")
+      .select("id, name, email, phone")
       .in("id", ids)
       .then(({ data }) => {
         if (data) {
           const map: Record<string, { name: string; email: string | null; phone: string | null }> = {};
-          const clicks: Record<string, number> = {};
           data.forEach((d) => {
             map[d.id] = { name: d.name || d.email || d.id.slice(0, 8), email: d.email, phone: d.phone };
-            clicks[d.id] = d.link_clicks_count || 0;
           });
           setLeadData(map);
-          setClicksByLead(clicks);
-        }
-      });
-
-    // Fetch email_clicks stats for this campaign
-    supabase
-      .from("email_clicks")
-      .select("id, lead_id, is_unique")
-      .eq("campaign_id", campaign.id)
-      .then(({ data }) => {
-        if (data) {
-          const uniqueLeadIds = new Set(data.filter((c) => c.is_unique).map((c) => c.lead_id));
-          setEmailClickStats({ total: data.length, uniqueLeads: uniqueLeadIds.size });
         }
       });
   }, [leads, campaign.id]);
@@ -508,8 +491,6 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
     queued: "bg-primary/10 text-primary",
     sent: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
     delivered: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
-    opened: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-    clicked: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
     replied: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
     failed: "bg-destructive/10 text-destructive",
     accepted: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300",
@@ -521,8 +502,6 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
     queued: "Na fila",
     sent: "Enviado",
     delivered: "Entregue",
-    opened: "Aberto",
-    clicked: "Clicado",
     replied: "Respondido",
     failed: "Falha",
     accepted: "Aceito",
@@ -530,9 +509,9 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
   };
 
   const repliedLeads = leads?.filter((l) => l.replied_at) || [];
-  const clickedLeads = leads?.filter((l) => clicksByLead[l.lead_id] > 0) || [];
+  const acceptedLeads = leads?.filter((l) => l.accepted_at) || [];
   const totalRate = leads && leads.length > 0
-    ? Math.round(((repliedLeads.length + clickedLeads.length) / leads.length) * 100)
+    ? Math.round((repliedLeads.length / leads.length) * 100)
     : 0;
 
   return (
@@ -551,12 +530,10 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
         </DialogHeader>
 
         {/* KPI summary row */}
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-7 shrink-0">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 shrink-0">
           {[
             { label: "Enviados", val: campaign.total_sent, icon: Send },
             { label: "Entregues", val: campaign.total_delivered, icon: CheckCircle },
-            { label: "Abertos", val: campaign.total_opened, icon: Eye },
-            { label: "Clicados", val: (campaign as any).total_clicked || 0, icon: MousePointerClick },
             { label: "Respondidos", val: campaign.total_replied, icon: Reply },
             { label: "Aceitos", val: campaign.total_accepted, icon: Users },
             { label: "Falhas", val: campaign.total_failed, icon: XCircle },
@@ -578,8 +555,8 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
             <TabsTrigger value="replies">
               Respostas {repliedLeads.length > 0 ? `(${repliedLeads.length})` : ""}
             </TabsTrigger>
-            <TabsTrigger value="clicks">
-              Cliques {clickedLeads.length > 0 ? `(${clickedLeads.length})` : ""}
+            <TabsTrigger value="accepted">
+              Aceitos {acceptedLeads.length > 0 ? `(${acceptedLeads.length})` : ""}
             </TabsTrigger>
             <TabsTrigger value="metrics">
               Métricas
@@ -596,10 +573,9 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Lead</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Cliques</TableHead>
-                    <TableHead>Enviado em</TableHead>
+                     <TableHead>Lead</TableHead>
+                     <TableHead>Status</TableHead>
+                     <TableHead>Enviado em</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -617,16 +593,6 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
                         <Badge className={statusColors[l.status] || ""} variant="secondary">
                           {statusLabels[l.status] || l.status}
                         </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {clicksByLead[l.lead_id] > 0 ? (
-                          <span className="flex items-center gap-1 text-xs font-semibold text-primary">
-                            <MousePointerClick className="h-3 w-3" />
-                            {clicksByLead[l.lead_id]}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {l.sent_at ? new Date(l.sent_at).toLocaleString("pt-BR") : "—"}
@@ -680,51 +646,43 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
             )}
           </TabsContent>
 
-          {/* Clicks tab */}
-          <TabsContent value="clicks" className="flex-1 overflow-auto min-h-0 mt-3">
+          {/* Accepted tab */}
+          <TabsContent value="accepted" className="flex-1 overflow-auto min-h-0 mt-3">
             {isLoading ? (
               <Skeleton className="h-40 w-full" />
-            ) : clickedLeads.length === 0 ? (
+            ) : acceptedLeads.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
-                <MousePointerClick className="h-8 w-8 text-muted-foreground/30 mb-2" />
-                <p className="text-sm text-muted-foreground">Nenhum clique registrado ainda.</p>
-                <p className="text-xs text-muted-foreground mt-1">Os cliques aparecerão aqui quando os leads acessarem os links das mensagens.</p>
+                <Users className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                <p className="text-sm text-muted-foreground">Nenhum convite aceito ainda.</p>
               </div>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Lead</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Cliques únicos</TableHead>
+                    <TableHead>Enviado em</TableHead>
+                    <TableHead>Aceito em</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {clickedLeads
-                    .sort((a, b) => (clicksByLead[b.lead_id] || 0) - (clicksByLead[a.lead_id] || 0))
-                    .map((l) => (
-                      <TableRow key={l.id}>
-                        <TableCell>
-                          <div>
-                            <p className="text-sm font-medium text-foreground">{leadData[l.lead_id]?.name || l.lead_id.slice(0, 8) + "..."}</p>
-                            {leadData[l.lead_id]?.email && (
-                              <p className="text-xs text-muted-foreground">{leadData[l.lead_id].email}</p>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={statusColors[l.status] || ""} variant="secondary">
-                            {statusLabels[l.status] || l.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <span className="flex items-center gap-1 text-sm font-bold text-primary">
-                            <MousePointerClick className="h-3.5 w-3.5" />
-                            {clicksByLead[l.lead_id]}
-                          </span>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                  {acceptedLeads.map((l) => (
+                    <TableRow key={l.id}>
+                      <TableCell>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{leadData[l.lead_id]?.name || l.lead_id.slice(0, 8) + "..."}</p>
+                          {leadData[l.lead_id]?.email && (
+                            <p className="text-xs text-muted-foreground">{leadData[l.lead_id].email}</p>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {l.sent_at ? new Date(l.sent_at).toLocaleString("pt-BR") : "—"}
+                      </TableCell>
+                      <TableCell className="text-xs text-foreground font-medium">
+                        {l.accepted_at ? new Date(l.accepted_at).toLocaleString("pt-BR") : "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             )}
@@ -738,7 +696,7 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
                 <h3 className="text-sm font-semibold text-foreground mb-3">Taxa de engajamento geral</h3>
                 <div className="flex items-end gap-3">
                   <span className="text-3xl font-bold text-primary">{totalRate}%</span>
-                  <span className="text-sm text-muted-foreground mb-1">respostas + cliques / total</span>
+                  <span className="text-sm text-muted-foreground mb-1">respostas / total de enviados</span>
                 </div>
                 <div className="mt-3 h-2 rounded-full bg-muted overflow-hidden">
                   <div
@@ -764,16 +722,10 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
                     desc: `${campaign.total_replied} respondidos`
                   },
                   {
-                    label: "Taxa de cliques",
-                    value: campaign.total_sent > 0 ? Math.round((emailClickStats.uniqueLeads / campaign.total_sent) * 100) : 0,
-                    icon: MousePointerClick,
-                    desc: `${emailClickStats.uniqueLeads} leads únicos / ${emailClickStats.total} cliques totais`
-                  },
-                  {
-                    label: "Cliques (botão CTA)",
-                    value: campaign.total_sent > 0 ? Math.round(((campaign as any).total_clicked || 0) / campaign.total_sent * 100) : 0,
-                    icon: MousePointerClick,
-                    desc: `${(campaign as any).total_clicked || 0} clicaram no botão do email`
+                    label: "Taxa de aceitação",
+                    value: campaign.total_sent > 0 ? Math.round((campaign.total_accepted / campaign.total_sent) * 100) : 0,
+                    icon: Users,
+                    desc: `${campaign.total_accepted} aceitos`
                   },
                   {
                     label: "Taxa de falha",
