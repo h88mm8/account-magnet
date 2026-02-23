@@ -159,11 +159,14 @@ Deno.serve(async (req) => {
       "DELIVERED",
     ].some((e) => normalizedEvent.includes(e) && !isEmailReply);
 
-    const isEmailOpened = [
-      "EMAILOPENED",
-      "MESSAGEOPENED",
-      "OPENED",
-    ].some((e) => normalizedEvent.includes(e) && !isEmailReply && !isEmailDelivered);
+    const isEmailSpam = [
+      "EMAILSPAM",
+      "SPAMCOMPLAINT",
+      "SPAM_COMPLAINT",
+      "COMPLAINT",
+      "SPAM",
+      "MARKEDASSPAM",
+    ].some((e) => normalizedEvent.includes(e));
 
     const isEmailBounced = [
       "EMAILBOUNCED",
@@ -208,7 +211,40 @@ Deno.serve(async (req) => {
       }
     }
 
-    if ((isEmailReply || isEmailDelivered || isEmailOpened) && provider === "email") {
+    // ── Handle spam → immediate permanent block ──
+    if (isEmailSpam && provider === "email" && userId) {
+      console.log(`[WEBHOOK-INTEGRATION] Spam complaint event: ${event} for user ${userId}`);
+      const spamEmail = (data.to || data.recipient || data.email || "").toLowerCase().trim();
+      if (spamEmail) {
+        try {
+          const { data: existing } = await supabase
+            .from("email_blocklist")
+            .select("id")
+            .eq("user_id", userId)
+            .eq("email", spamEmail)
+            .maybeSingle();
+
+          if (existing) {
+            await supabase.from("email_blocklist").update({
+              bounce_count: 999,
+              reason: "spam",
+            }).eq("id", existing.id);
+          } else {
+            await supabase.from("email_blocklist").insert({
+              user_id: userId,
+              email: spamEmail,
+              reason: "spam",
+              bounce_count: 999,
+            });
+          }
+          console.log(`[WEBHOOK-INTEGRATION] Spam block registered for ${spamEmail} (user ${userId})`);
+        } catch (spamErr) {
+          console.error(`[WEBHOOK-INTEGRATION] Failed to register spam block:`, spamErr.message);
+        }
+      }
+    }
+
+    if ((isEmailReply || isEmailDelivered) && provider === "email") {
       console.log(`[WEBHOOK-INTEGRATION] Email event: ${event} for user ${userId}`);
 
       // Extract the sender/recipient email to match against leads
@@ -322,37 +358,6 @@ Deno.serve(async (req) => {
             console.log(`[WEBHOOK-INTEGRATION] Marked ${updated.length} campaign_lead(s) as delivered`);
           }
 
-        } else if (isEmailOpened) {
-          const { data: updated } = await supabase
-            .from("campaign_leads")
-            .update({
-              status: "opened",
-              opened_at: now,
-              webhook_data: body,
-            })
-            .in("lead_id", matchedLeadIds)
-            .eq("user_id", userId)
-            .in("status", ["sent", "delivered"])
-            .select("campaign_id");
-
-          if (updated && updated.length > 0) {
-            const campaignIds = [...new Set(updated.map((l) => l.campaign_id as string))];
-            for (const cid of campaignIds) {
-              const count = updated.filter((l) => l.campaign_id === cid).length;
-              const { data: camp } = await supabase
-                .from("campaigns")
-                .select("total_opened")
-                .eq("id", cid)
-                .single();
-              if (camp) {
-                await supabase
-                  .from("campaigns")
-                  .update({ total_opened: (camp.total_opened || 0) + count })
-                  .eq("id", cid);
-              }
-            }
-            console.log(`[WEBHOOK-INTEGRATION] Marked ${updated.length} campaign_lead(s) as opened`);
-          }
         }
       } else {
         console.warn(`[WEBHOOK-INTEGRATION] Could not match any lead for email event. sender: ${senderEmail}`);

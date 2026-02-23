@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Building2, Users, TrendingUp, Target, Download, Send, Reply, Mail, MousePointerClick, ExternalLink, CheckCircle, XCircle, Filter } from "lucide-react";
+import { Building2, Users, TrendingUp, Target, Download, Send, Reply, Mail, CheckCircle, XCircle, Filter } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,13 +24,11 @@ import {
   useRealMetrics,
   useMonthlyChartData,
   useIndustryChartData,
-  useClicksChartData,
-  useTopLeadsByClicks,
 } from "@/hooks/useRealMetrics";
 import { useEventLog, useEventTotals, useEventChartData } from "@/hooks/useEventLog";
 import { useCampaigns } from "@/hooks/useCampaigns";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EngagedLeadsModal } from "@/components/EngagedLeadsModal";
+
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -38,7 +36,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 const EVENT_LABELS: Record<string, { label: string; color: string }> = {
   sent: { label: "Enviado", color: "bg-blue-100 text-blue-800" },
   delivered: { label: "Entregue", color: "bg-green-100 text-green-800" },
-  clicked: { label: "Clicado", color: "bg-purple-100 text-purple-800" },
   replied: { label: "Respondido", color: "bg-emerald-100 text-emerald-800" },
   accepted: { label: "Aceito", color: "bg-teal-100 text-teal-800" },
   failed: { label: "Falha", color: "bg-red-100 text-red-800" },
@@ -56,13 +53,11 @@ const Analytics = () => {
   const [eventPeriod, setEventPeriod] = useState("7d");
   const [eventCampaign, setEventCampaign] = useState("all");
   const [eventType, setEventType] = useState("all");
-  const [engagedOpen, setEngagedOpen] = useState(false);
+  
 
   const { data: metrics, isLoading: metricsLoading } = useRealMetrics();
   const { data: monthlyData, isLoading: monthlyLoading } = useMonthlyChartData();
   const { data: industryData, isLoading: industryLoading } = useIndustryChartData();
-  const { data: clicksData, isLoading: clicksLoading } = useClicksChartData(period);
-  const { data: topLeads, isLoading: topLeadsLoading } = useTopLeadsByClicks();
   const { data: campaigns } = useCampaigns();
 
   const eventFilters = {
@@ -82,7 +77,6 @@ const Analytics = () => {
     { label: "Campanhas ativas", value: metrics?.activeCampaigns ?? 0, icon: Mail },
     { label: "Total enviados", value: metrics?.totalSent ?? 0, icon: Send },
     { label: "Total respondidos", value: metrics?.totalReplied ?? 0, icon: Reply },
-    { label: "Cliques únicos", value: metrics?.totalLinkClicks ?? 0, icon: MousePointerClick },
   ];
 
   return (
@@ -114,7 +108,7 @@ const Analytics = () => {
       </div>
 
       {/* KPIs */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         {kpis.map((kpi) => (
           <Card key={kpi.label} className="border border-border shadow-none">
             <CardContent className="p-5">
@@ -144,72 +138,6 @@ const Analytics = () => {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
-          {/* Link Clicks Chart + Top Leads */}
-          <div className="grid gap-6 lg:grid-cols-3">
-            <Card className="border border-border shadow-none lg:col-span-2">
-              <CardHeader>
-                <CardTitle className="font-display text-base font-semibold flex items-center gap-2">
-                  <MousePointerClick className="h-4 w-4 text-primary" />
-                  Cliques em links por período
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {clicksLoading ? (
-                  <Skeleton className="h-[240px] w-full" />
-                ) : clicksData && clicksData.length > 0 && clicksData.some((d) => d.cliques > 0) ? (
-                  <ResponsiveContainer width="100%" height={240}>
-                    <BarChart data={clicksData}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                      <XAxis dataKey="date" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} interval="preserveStartEnd" />
-                      <YAxis allowDecimals={false} className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
-                      <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "var(--radius)", color: "hsl(var(--foreground))" }} formatter={(v: number) => [v, "Cliques únicos"]} />
-                      <Bar dataKey="cliques" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">
-                    Nenhum clique registrado no período.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="border border-border shadow-none">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                <CardTitle className="font-display text-base font-semibold">Leads mais engajados</CardTitle>
-                {topLeads && topLeads.length > 0 && (
-                  <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-primary" onClick={() => setEngagedOpen(true)}>
-                    <ExternalLink className="h-3 w-3" /> Ver todos
-                  </Button>
-                )}
-              </CardHeader>
-              <CardContent>
-                {topLeadsLoading ? (
-                  <Skeleton className="h-[240px] w-full" />
-                ) : topLeads && topLeads.length > 0 ? (
-                  <div className="space-y-3">
-                    {topLeads.slice(0, 5).map((lead, i) => (
-                      <div key={lead.lead_id} className="flex items-center gap-3">
-                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{i + 1}</span>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-foreground">{lead.name}</p>
-                          {lead.company && <p className="truncate text-xs text-muted-foreground">{lead.company}</p>}
-                        </div>
-                        <span className="flex items-center gap-1 text-sm font-semibold text-primary">
-                          <MousePointerClick className="h-3 w-3" /> {lead.link_clicks_count}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground text-center px-4">
-                    Nenhum lead clicou em links ainda.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
           {/* Existing Charts */}
           <div className="grid gap-6 lg:grid-cols-2">
             <Card className="border border-border shadow-none">
@@ -267,7 +195,7 @@ const Analytics = () => {
 
         <TabsContent value="events" className="space-y-6">
           {/* Event Totals Cards */}
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Card className="border border-border shadow-none">
               <CardContent className="p-5">
                 <div className="flex items-center justify-between">
@@ -284,20 +212,7 @@ const Analytics = () => {
             <Card className="border border-border shadow-none">
               <CardContent className="p-5">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Cliques</span>
-                  <MousePointerClick className="h-4 w-4 text-purple-500" />
-                </div>
-                <div className="mt-2">
-                  {totalsLoading ? <Skeleton className="h-8 w-16" /> : (
-                    <span className="font-display text-2xl font-bold text-foreground">{eventTotals?.clicked ?? 0}</span>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="border border-border shadow-none">
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Bounces</span>
+                  <span className="text-sm text-muted-foreground">Falhas</span>
                   <XCircle className="h-4 w-4 text-red-500" />
                 </div>
                 <div className="mt-2">
@@ -367,7 +282,6 @@ const Analytics = () => {
                 <SelectItem value="all">Todos tipos</SelectItem>
                 <SelectItem value="sent">Enviado</SelectItem>
                 <SelectItem value="delivered">Entregue</SelectItem>
-                <SelectItem value="clicked">Clicado</SelectItem>
                 <SelectItem value="replied">Respondido</SelectItem>
                 <SelectItem value="accepted">Aceito</SelectItem>
                 <SelectItem value="failed">Falha</SelectItem>
@@ -431,7 +345,7 @@ const Analytics = () => {
         </TabsContent>
       </Tabs>
 
-      <EngagedLeadsModal open={engagedOpen} onOpenChange={setEngagedOpen} />
+      
     </div>
   );
 };

@@ -187,7 +187,7 @@ export function useCampaignMetrics() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campaigns")
-        .select("status, total_sent, total_delivered, total_opened, total_replied, total_failed, total_accepted, channel");
+        .select("status, total_sent, total_delivered, total_replied, total_failed, total_accepted, channel");
       if (error) throw error;
       const campaigns = data || [];
       return {
@@ -195,7 +195,7 @@ export function useCampaignMetrics() {
         activeCampaigns: campaigns.filter((c) => c.status === "active").length,
         totalSent: campaigns.reduce((s, c) => s + (c.total_sent || 0), 0),
         totalDelivered: campaigns.reduce((s, c) => s + (c.total_delivered || 0), 0),
-        totalOpened: campaigns.reduce((s, c) => s + (c.total_opened || 0), 0),
+        
         totalReplied: campaigns.reduce((s, c) => s + (c.total_replied || 0), 0),
         totalFailed: campaigns.reduce((s, c) => s + (c.total_failed || 0), 0),
         totalAccepted: campaigns.reduce((s, c) => s + (c.total_accepted || 0), 0),
