@@ -52,6 +52,7 @@ export function useCampaigns() {
       if (error) throw error;
       return data as Campaign[];
     },
+    refetchInterval: 15000,
   });
 }
 

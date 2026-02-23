@@ -39,10 +39,41 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── Fallback: if name is missing, resolve provider/user from account_id ──
+    if ((!provider || !userId) && accountId) {
+      console.log(`[WEBHOOK-INTEGRATION] Name missing, looking up account_id: ${accountId}`);
+      
+      // Check user_integrations (linkedin/email)
+      const { data: integration } = await supabase
+        .from("user_integrations")
+        .select("user_id, provider")
+        .eq("unipile_account_id", accountId)
+        .maybeSingle();
+
+      if (integration) {
+        provider = integration.provider;
+        userId = integration.user_id;
+        console.log(`[WEBHOOK-INTEGRATION] Resolved from user_integrations: provider=${provider}, user=${userId}`);
+      } else {
+        // Check whatsapp_connections
+        const { data: waConn } = await supabase
+          .from("whatsapp_connections")
+          .select("user_id")
+          .eq("unipile_account_id", accountId)
+          .maybeSingle();
+
+        if (waConn) {
+          provider = "whatsapp";
+          userId = waConn.user_id;
+          console.log(`[WEBHOOK-INTEGRATION] Resolved from whatsapp_connections: user=${userId}`);
+        }
+      }
+    }
+
     console.log(`[WEBHOOK-INTEGRATION] Event/Status: ${event}, Provider: ${provider}, User: ${userId}, AccountId: ${accountId}, AccountType: ${accountType}`);
 
     if (!provider || !userId) {
-      console.log("[WEBHOOK-INTEGRATION] Could not parse provider/user from name, skipping");
+      console.log("[WEBHOOK-INTEGRATION] Could not resolve provider/user, skipping");
       return new Response(JSON.stringify({ ok: true, skipped: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -52,12 +83,10 @@ Deno.serve(async (req) => {
     const normalizedEvent = event.toUpperCase().replace(/[.\-_]/g, "");
 
     // Handle connection success
-    // Unipile sends: status="CREATION_SUCCESS", event="account.created", "account.connected", etc.
     const isConnected = [
       "CREATIONSUCCESS",
       "ACCOUNTCREATED",
       "ACCOUNTCONNECTED",
-      "ACCOUNTCREATED",
       "CONNECTED",
     ].includes(normalizedEvent);
 
@@ -85,7 +114,6 @@ Deno.serve(async (req) => {
 
     // Handle disconnection
     const isDisconnected = [
-      "ACCOUNTDISCONNECTED",
       "ACCOUNTDISCONNECTED",
       "DISCONNECTED",
     ].includes(normalizedEvent);
@@ -143,9 +171,7 @@ Deno.serve(async (req) => {
       console.log(`[WEBHOOK-INTEGRATION] ${provider} creation failed for user ${userId}`);
     }
 
-    // ── Email reply / delivered / opened events ─────────────────────────────
-    // Unipile sends events like: email.replied, email.opened, email.delivered, message_reply, etc.
-    // These events carry data.email (sender), data.subject, data.message_id or data.original_message_id
+    // ── Email event detection ─────────────────────────────
     const isEmailReply = [
       "EMAILREPLIED",
       "EMAILREPLY",
@@ -244,34 +270,42 @@ Deno.serve(async (req) => {
       }
     }
 
-    if ((isEmailReply || isEmailDelivered) && provider === "email") {
+    // ── Handle email delivery & reply events ──
+    if ((isEmailReply || isEmailDelivered) && (provider === "email" || accountType?.toUpperCase()?.includes("MAIL"))) {
       console.log(`[WEBHOOK-INTEGRATION] Email event: ${event} for user ${userId}`);
 
-      // Extract the sender/recipient email to match against leads
-      const senderEmail = data.from || data.sender || data.from_address || data.email || "";
+      // For REPLY events: the lead is the SENDER (they replied to us)
+      // For DELIVERY events: the lead is the RECIPIENT (we sent to them and it was delivered)
+      const replyEmail = data.from || data.sender || data.from_address || "";
+      const deliveryEmail = data.to || data.recipient || data.to_address || data.email || "";
+      const matchEmail = isEmailReply ? (replyEmail || deliveryEmail) : (deliveryEmail || replyEmail);
       const messageId = data.message_id || data.id || data.original_message_id || body.message_id || "";
 
-      console.log(`[WEBHOOK-INTEGRATION] Email event details — sender: ${senderEmail}, messageId: ${messageId}`);
+      console.log(`[WEBHOOK-INTEGRATION] Email event details — matchEmail: ${matchEmail}, messageId: ${messageId}, isReply: ${isEmailReply}, isDelivered: ${isEmailDelivered}`);
 
       // Find matching campaign_lead by lead email
       let matchedLeadIds: string[] = [];
 
-      if (senderEmail) {
+      if (matchEmail) {
+        // Clean email: handle "Name <email@example.com>" format
+        const cleanEmail = matchEmail.includes("<") 
+          ? matchEmail.match(/<([^>]+)>/)?.[1]?.trim() || matchEmail.trim()
+          : matchEmail.trim();
+
         const { data: leads } = await supabase
           .from("prospect_list_items")
           .select("id, email")
           .eq("user_id", userId)
-          .ilike("email", senderEmail.trim());
+          .ilike("email", cleanEmail);
 
         if (leads && leads.length > 0) {
           matchedLeadIds = leads.map((l) => l.id);
-          console.log(`[WEBHOOK-INTEGRATION] Matched ${matchedLeadIds.length} lead(s) by email: ${senderEmail}`);
+          console.log(`[WEBHOOK-INTEGRATION] Matched ${matchedLeadIds.length} lead(s) by email: ${cleanEmail}`);
         }
       }
 
-      // Fallback: match by campaign_lead message tracking (unipile_message_id / content)
+      // Fallback: match by unipile_message_id in messages_sent
       if (matchedLeadIds.length === 0 && messageId) {
-        // Try to find the original sent message and extract lead_id
         const { data: sentMsg } = await supabase
           .from("messages_sent")
           .select("lead_id, campaign_lead_id")
@@ -289,7 +323,6 @@ Deno.serve(async (req) => {
         const now = new Date().toISOString();
 
         if (isEmailReply) {
-          // Update campaign_leads status to replied
           const { data: updated } = await supabase
             .from("campaign_leads")
             .update({
@@ -299,13 +332,12 @@ Deno.serve(async (req) => {
             })
             .in("lead_id", matchedLeadIds)
             .eq("user_id", userId)
-            .in("status", ["sent", "delivered", "opened"])
+            .in("status", ["sent", "delivered"])
             .select("campaign_id");
 
           if (updated && updated.length > 0) {
             console.log(`[WEBHOOK-INTEGRATION] Marked ${updated.length} campaign_lead(s) as replied`);
 
-            // Increment campaigns.total_replied per campaign
             const campaignIds = [...new Set(updated.map((l) => l.campaign_id as string))];
             for (const cid of campaignIds) {
               const count = updated.filter((l) => l.campaign_id === cid).length;
@@ -323,7 +355,7 @@ Deno.serve(async (req) => {
               }
             }
           } else {
-            console.warn(`[WEBHOOK-INTEGRATION] No campaign_leads updated for leads: ${matchedLeadIds}`);
+            console.warn(`[WEBHOOK-INTEGRATION] No campaign_leads updated for reply. leads: ${matchedLeadIds}`);
           }
 
         } else if (isEmailDelivered) {
@@ -356,11 +388,12 @@ Deno.serve(async (req) => {
               }
             }
             console.log(`[WEBHOOK-INTEGRATION] Marked ${updated.length} campaign_lead(s) as delivered`);
+          } else {
+            console.warn(`[WEBHOOK-INTEGRATION] No campaign_leads updated for delivery. leads: ${matchedLeadIds}`);
           }
-
         }
       } else {
-        console.warn(`[WEBHOOK-INTEGRATION] Could not match any lead for email event. sender: ${senderEmail}`);
+        console.warn(`[WEBHOOK-INTEGRATION] Could not match any lead for email event. email: ${matchEmail}, messageId: ${messageId}`);
       }
     }
 
