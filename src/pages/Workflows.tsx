@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -19,6 +20,7 @@ import {
   useWorkflows, useCreateWorkflow, useUpdateWorkflow, useDeleteWorkflow,
   useWorkflowExecutions, type Workflow,
 } from "@/hooks/useWorkflows";
+import { useWorkflowEvents } from "@/hooks/useWorkflowEvents";
 import { useProspectLists } from "@/hooks/useProspectLists";
 import { WorkflowEditor } from "@/components/workflow/WorkflowEditor";
 
@@ -215,6 +217,7 @@ export default function Workflows() {
 // ──────────────────────────────────────────────
 function WorkflowDetail({ workflow, onBack }: { workflow: Workflow; onBack: () => void }) {
   const { data: executions, isLoading } = useWorkflowExecutions(workflow.id);
+  const { metrics, metricsLoading, eventLog, eventLogLoading } = useWorkflowEvents(workflow.id);
 
   const statusColors: Record<string, string> = {
     running: "text-primary",
@@ -223,81 +226,201 @@ function WorkflowDetail({ workflow, onBack }: { workflow: Workflow; onBack: () =
     paused: "text-muted-foreground",
   };
 
+  const channelLabels: Record<string, string> = { email: "Email", linkedin: "LinkedIn", whatsapp: "WhatsApp", site: "Site" };
+  const eventLabels: Record<string, string> = {
+    sent: "Enviado", delivered: "Entregue", replied: "Respondido", bounced: "Bounce",
+    spam: "Spam", accepted: "Aceito", page_visit: "Visita", scroll_depth: "Scroll", cta_click: "CTA Click",
+  };
+
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
       <div className="flex items-center gap-3">
         <Button variant="outline" size="sm" onClick={onBack}>← Voltar</Button>
         <div>
           <h1 className="text-xl font-bold text-foreground">{workflow.name}</h1>
-          <p className="text-xs text-muted-foreground">Execuções do workflow</p>
+          <p className="text-xs text-muted-foreground">Detalhes do workflow</p>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {["running", "completed", "failed", "paused"].map((st) => {
-          const count = executions?.filter((e) => e.status === st).length || 0;
-          return (
-            <Card key={st}>
-              <CardContent className="py-4 text-center">
-                <p className="text-2xl font-bold text-foreground">{count}</p>
-                <p className="text-xs text-muted-foreground capitalize">{st === "running" ? "Em execução" : st === "completed" ? "Concluídos" : st === "failed" ? "Falhas" : "Pausados"}</p>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+      <Tabs defaultValue="executions" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="executions">Execuções</TabsTrigger>
+          <TabsTrigger value="metrics">Métricas</TabsTrigger>
+          <TabsTrigger value="events">Log de Eventos</TabsTrigger>
+        </TabsList>
 
-      {/* Executions table */}
-      <Card>
-        <CardHeader><CardTitle className="text-sm">Execuções recentes</CardTitle></CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>
-          ) : !executions?.length ? (
-            <p className="text-sm text-muted-foreground text-center py-8">Nenhuma execução ainda</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-muted-foreground text-xs">
-                    <th className="text-left py-2">Contato</th>
-                    <th className="text-left py-2">Status</th>
-                    <th className="text-left py-2">Tentativas</th>
-                    <th className="text-left py-2">Próximo</th>
-                    <th className="text-left py-2">Erro</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {executions.map((exec) => (
-                    <tr key={exec.id} className="border-b border-border/50">
-                      <td className="py-2">
-                        <span className="font-medium text-foreground">
-                          {(exec as any).prospect_list_items?.name || "—"}
-                        </span>
-                        <br />
-                        <span className="text-xs text-muted-foreground">
-                          {(exec as any).prospect_list_items?.company || ""}
-                        </span>
-                      </td>
-                      <td className="py-2">
-                        <span className={statusColors[exec.status] || ""}>
-                          {exec.status === "running" ? "Executando" : exec.status === "completed" ? "Concluído" : exec.status === "failed" ? "Falha" : exec.status}
-                        </span>
-                      </td>
-                      <td className="py-2 text-muted-foreground">{exec.retry_count}</td>
-                      <td className="py-2 text-xs text-muted-foreground">
-                        {exec.next_run_at ? new Date(exec.next_run_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "—"}
-                      </td>
-                      <td className="py-2 text-xs text-destructive max-w-[200px] truncate">{exec.error_message || "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        {/* Executions tab */}
+        <TabsContent value="executions">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+            {["running", "completed", "failed", "paused"].map((st) => {
+              const count = executions?.filter((e) => e.status === st).length || 0;
+              return (
+                <Card key={st}>
+                  <CardContent className="py-4 text-center">
+                    <p className="text-2xl font-bold text-foreground">{count}</p>
+                    <p className="text-xs text-muted-foreground">{st === "running" ? "Em execução" : st === "completed" ? "Concluídos" : st === "failed" ? "Falhas" : "Pausados"}</p>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+          <Card>
+            <CardHeader><CardTitle className="text-sm">Execuções recentes</CardTitle></CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>
+              ) : !executions?.length ? (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhuma execução ainda</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border text-muted-foreground text-xs">
+                        <th className="text-left py-2">Contato</th>
+                        <th className="text-left py-2">Status</th>
+                        <th className="text-left py-2">Tentativas</th>
+                        <th className="text-left py-2">Próximo</th>
+                        <th className="text-left py-2">Erro</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {executions.map((exec) => (
+                        <tr key={exec.id} className="border-b border-border/50">
+                          <td className="py-2">
+                            <span className="font-medium text-foreground">{(exec as any).prospect_list_items?.name || "—"}</span>
+                            <br /><span className="text-xs text-muted-foreground">{(exec as any).prospect_list_items?.company || ""}</span>
+                          </td>
+                          <td className="py-2">
+                            <span className={statusColors[exec.status] || ""}>{exec.status === "running" ? "Executando" : exec.status === "completed" ? "Concluído" : exec.status === "failed" ? "Falha" : exec.status}</span>
+                          </td>
+                          <td className="py-2 text-muted-foreground">{exec.retry_count}</td>
+                          <td className="py-2 text-xs text-muted-foreground">{exec.next_run_at ? new Date(exec.next_run_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "—"}</td>
+                          <td className="py-2 text-xs text-destructive max-w-[200px] truncate">{exec.error_message || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Metrics tab */}
+        <TabsContent value="metrics">
+          {metricsLoading ? (
+            <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>
+          ) : metrics ? (
+            <div className="space-y-6">
+              {/* Email */}
+              <Card>
+                <CardHeader><CardTitle className="text-sm flex items-center gap-2">📧 Email</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                    {Object.entries(metrics.email).map(([key, val]) => (
+                      <div key={key} className="text-center">
+                        <p className="text-2xl font-bold text-foreground">{val}</p>
+                        <p className="text-xs text-muted-foreground">{eventLabels[key] || key}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* LinkedIn */}
+              <Card>
+                <CardHeader><CardTitle className="text-sm flex items-center gap-2">💼 LinkedIn</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    {Object.entries(metrics.linkedin).map(([key, val]) => (
+                      <div key={key} className="text-center">
+                        <p className="text-2xl font-bold text-foreground">{val}</p>
+                        <p className="text-xs text-muted-foreground">{eventLabels[key] || key}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* WhatsApp */}
+              <Card>
+                <CardHeader><CardTitle className="text-sm flex items-center gap-2">💬 WhatsApp</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {Object.entries(metrics.whatsapp).map(([key, val]) => (
+                      <div key={key} className="text-center">
+                        <p className="text-2xl font-bold text-foreground">{val}</p>
+                        <p className="text-xs text-muted-foreground">{eventLabels[key] || key}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Site */}
+              <Card>
+                <CardHeader><CardTitle className="text-sm flex items-center gap-2">🌐 Site</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {Object.entries(metrics.site).map(([key, val]) => (
+                      <div key={key} className="text-center">
+                        <p className="text-2xl font-bold text-foreground">{val}</p>
+                        <p className="text-xs text-muted-foreground">{eventLabels[key] || key}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          ) : null}
+        </TabsContent>
+
+        {/* Events log tab */}
+        <TabsContent value="events">
+          <Card>
+            <CardHeader><CardTitle className="text-sm">Log de Eventos</CardTitle></CardHeader>
+            <CardContent>
+              {eventLogLoading ? (
+                <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>
+              ) : !eventLog?.length ? (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhum evento registrado</p>
+              ) : (
+                <div className="overflow-x-auto max-h-96">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-card">
+                      <tr className="border-b border-border text-muted-foreground text-xs">
+                        <th className="text-left py-2">Data</th>
+                        <th className="text-left py-2">Canal</th>
+                        <th className="text-left py-2">Evento</th>
+                        <th className="text-left py-2">Contato</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {eventLog.map((evt) => (
+                        <tr key={evt.id} className="border-b border-border/50">
+                          <td className="py-2 text-xs text-muted-foreground whitespace-nowrap">
+                            {new Date(evt.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                          </td>
+                          <td className="py-2">
+                            <Badge variant="outline" className="text-[10px]">{channelLabels[evt.channel] || evt.channel}</Badge>
+                          </td>
+                          <td className="py-2">
+                            <Badge variant="secondary" className="text-[10px]">{eventLabels[evt.event_type] || evt.event_type}</Badge>
+                          </td>
+                          <td className="py-2">
+                            <span className="text-foreground text-xs">{evt.contact_name || "—"}</span>
+                            {evt.contact_company && <span className="text-muted-foreground text-xs ml-1">({evt.contact_company})</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

@@ -167,6 +167,54 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── Write to unified events table ──
+    const linkedinEvents: Array<{ event_type: string; lead_ids: string[] }> = [];
+
+    if ((event === "connection_accepted" || event === "invitation_accepted")) {
+      const linkedinId2 = data.provider_id || data.public_identifier || data.linkedin_url || "";
+      if (linkedinId2) {
+        const { data: leads2 } = await supabase.from("prospect_list_items").select("id, user_id, linkedin_url");
+        const matched2 = (leads2 || []).filter((l) => l.linkedin_url && (l.linkedin_url.includes(linkedinId2) || linkedinId2.includes(l.linkedin_url.split("/in/")[1]?.split("?")[0] || "___")));
+        if (matched2.length > 0) {
+          for (const lead of matched2) {
+            await supabase.from("events").insert({
+              user_id: lead.user_id,
+              contact_id: lead.id,
+              channel: "linkedin",
+              event_type: "accepted",
+              metadata: { raw_event: event },
+            });
+          }
+        }
+      }
+    }
+
+    if (event === "message_delivered" || event === "delivered") {
+      const linkedinId3 = data.provider_id || data.attendee_provider_id || "";
+      if (linkedinId3) {
+        const { data: leads3 } = await supabase.from("prospect_list_items").select("id, user_id, linkedin_url");
+        const matched3 = (leads3 || []).filter((l) => l.linkedin_url && (l.linkedin_url.includes(linkedinId3) || linkedinId3 === l.linkedin_url));
+        for (const lead of matched3) {
+          await supabase.from("events").insert({
+            user_id: lead.user_id, contact_id: lead.id, channel: "linkedin", event_type: "delivered", metadata: { raw_event: event },
+          });
+        }
+      }
+    }
+
+    if (event === "message_reply" || event === "reply" || event === "new_message") {
+      const linkedinId4 = data.provider_id || data.sender_provider_id || "";
+      if (linkedinId4) {
+        const { data: leads4 } = await supabase.from("prospect_list_items").select("id, user_id, linkedin_url");
+        const matched4 = (leads4 || []).filter((l) => l.linkedin_url && (l.linkedin_url.includes(linkedinId4) || linkedinId4 === l.linkedin_url));
+        for (const lead of matched4) {
+          await supabase.from("events").insert({
+            user_id: lead.user_id, contact_id: lead.id, channel: "linkedin", event_type: "replied", metadata: { raw_event: event },
+          });
+        }
+      }
+    }
+
     return new Response(JSON.stringify({ ok: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

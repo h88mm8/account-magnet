@@ -397,6 +397,37 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── Write to unified events table ──
+    if (userId) {
+      const eventEntries: Array<{ channel: string; event_type: string; contact_id?: string }> = [];
+
+      if (isEmailDelivered && matchedLeadIds.length > 0) {
+        matchedLeadIds.forEach((lid) => eventEntries.push({ channel: "email", event_type: "delivered", contact_id: lid }));
+      }
+      if (isEmailReply && matchedLeadIds.length > 0) {
+        matchedLeadIds.forEach((lid) => eventEntries.push({ channel: "email", event_type: "replied", contact_id: lid }));
+      }
+      if (isEmailBounced) {
+        const bouncedEmail2 = (data.to || data.recipient || data.email || "").toLowerCase().trim();
+        eventEntries.push({ channel: "email", event_type: "bounced" });
+      }
+      if (isEmailSpam) {
+        eventEntries.push({ channel: "email", event_type: "spam" });
+      }
+
+      for (const evt of eventEntries) {
+        await supabase.from("events").insert({
+          user_id: userId,
+          contact_id: evt.contact_id || null,
+          channel: evt.channel,
+          event_type: evt.event_type,
+          metadata: { raw_event: event, account_id: accountId },
+        }).then(({ error }) => {
+          if (error) console.error(`[WEBHOOK-INTEGRATION] Failed to insert event:`, error.message);
+        });
+      }
+    }
+
     return new Response(JSON.stringify({ ok: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
