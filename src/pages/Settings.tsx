@@ -398,7 +398,10 @@ const Settings = () => {
 
         {/* Tracking Page */}
         <TabsContent value="tracking">
-          <TrackingPageSettings />
+          <div className="space-y-4">
+            <TrackingPageSettings />
+            <SiteTrackingScript />
+          </div>
         </TabsContent>
       </Tabs>
     </div>
@@ -593,6 +596,102 @@ function TrackingPageSettings() {
         {saveMutation.isPending ? "Salvando..." : "Salvar configurações de tracking"}
       </Button>
     </div>
+  );
+}
+
+function SiteTrackingScript() {
+  const [copied, setCopied] = useState(false);
+  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || "rwagvawmceempafacnfh";
+  const trackingEndpoint = `https://${projectId}.supabase.co/functions/v1/track-event`;
+
+  const script = `<!-- ELEV Site Tracking -->
+<script>
+(function() {
+  var ENDPOINT = "${trackingEndpoint}";
+  var params = new URLSearchParams(window.location.search);
+  var contactId = params.get("contact_id");
+  if (!contactId) return;
+
+  function send(eventType, meta) {
+    var payload = { contact_id: contactId, event_type: eventType, metadata: meta || {} };
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(ENDPOINT, JSON.stringify(payload));
+    } else {
+      fetch(ENDPOINT, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), keepalive: true });
+    }
+  }
+
+  // Page visit
+  send("page_visit", { url: location.href, page_title: document.title, referrer: document.referrer });
+
+  // Scroll depth
+  var maxScroll = 0;
+  var reported = {};
+  window.addEventListener("scroll", function() {
+    var pct = Math.round((window.scrollY + window.innerHeight) / document.documentElement.scrollHeight * 100);
+    if (pct > maxScroll) maxScroll = pct;
+    [25,50,75,100].forEach(function(t) {
+      if (maxScroll >= t && !reported[t]) {
+        reported[t] = true;
+        send("scroll_depth", { scroll_percent: t, url: location.href });
+      }
+    });
+  });
+
+  // CTA clicks
+  document.addEventListener("click", function(e) {
+    var el = e.target.closest("[data-track-cta]");
+    if (el) {
+      send("cta_click", { cta_id: el.getAttribute("data-track-cta"), cta_text: (el.textContent || "").trim().substring(0, 100), url: location.href });
+    }
+  });
+})();
+</script>`;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(script);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <Card className="border border-border shadow-none">
+      <CardHeader>
+        <CardTitle className="font-display text-lg flex items-center gap-2">
+          <MousePointerClick className="h-5 w-5" />
+          Script de Tracking do Site
+        </CardTitle>
+        <CardDescription>
+          Cole este script no seu site para rastrear visitas, scroll e cliques em CTAs dos leads que chegam via campanhas.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="relative">
+          <pre className="rounded-lg bg-muted/50 border border-border p-4 text-xs font-mono overflow-x-auto max-h-64 whitespace-pre-wrap">
+            {script}
+          </pre>
+          <Button
+            variant="outline"
+            size="sm"
+            className="absolute top-2 right-2"
+            onClick={handleCopy}
+          >
+            {copied ? "Copiado!" : "Copiar"}
+          </Button>
+        </div>
+        <div className="space-y-2 text-xs text-muted-foreground">
+          <p><strong>Como funciona:</strong></p>
+          <ul className="list-disc pl-4 space-y-1">
+            <li>O script detecta o parâmetro <code className="bg-muted px-1 rounded">contact_id</code> na URL (injetado automaticamente pelo sistema de campanhas)</li>
+            <li>Registra <strong>page_visit</strong> ao carregar a página</li>
+            <li>Registra <strong>scroll_depth</strong> em 25%, 50%, 75% e 100%</li>
+            <li>Registra <strong>cta_click</strong> ao clicar em elementos com <code className="bg-muted px-1 rounded">data-track-cta="nome"</code></li>
+          </ul>
+          <p className="mt-2"><strong>Exemplo de CTA:</strong></p>
+          <code className="block bg-muted px-2 py-1 rounded">&lt;button data-track-cta="hero-demo"&gt;Agendar Demo&lt;/button&gt;</code>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
