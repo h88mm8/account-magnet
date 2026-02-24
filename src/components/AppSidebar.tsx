@@ -1,4 +1,4 @@
-import { Search, BarChart3, Settings, HelpCircle, List, Send, LogOut, Coins } from "lucide-react";
+import { Search, BarChart3, Settings, HelpCircle, List, Send, LogOut, Coins, GitBranch } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCredits } from "@/hooks/useCredits";
@@ -18,6 +18,7 @@ const mainNav = [
   { title: "Buscar", url: "/search", icon: Search },
   { title: "Listas", url: "/lists", icon: List },
   { title: "Campanhas", url: "/campaigns", icon: Send },
+  { title: "Workflows", url: "/workflows", icon: GitBranch },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
 ];
 

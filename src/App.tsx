@@ -16,6 +16,7 @@ import Help from "./pages/Help";
 import Lists from "./pages/Lists";
 import Campaigns from "./pages/Campaigns";
 import ApolloSearch from "./pages/ApolloSearch";
+import Workflows from "./pages/Workflows";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 import TrackingPage from "./pages/TrackingPage";
@@ -49,6 +50,7 @@ function ProtectedLayout() {
               <Route path="/contacts" element={<Contacts />} />
               <Route path="/lists" element={<Lists />} />
               <Route path="/campaigns" element={<Campaigns />} />
+              <Route path="/workflows" element={<Workflows />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/help" element={<Help />} />
