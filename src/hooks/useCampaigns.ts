@@ -13,6 +13,12 @@ export type Campaign = {
   subject: string | null;
   message_template: string | null;
   daily_limit: number;
+  min_delay_seconds: number;
+  max_delay_seconds: number;
+  schedule_days: string[] | null;
+  schedule_start_time: string | null;
+  schedule_end_time: string | null;
+  schedule_timezone: string | null;
   total_sent: number;
   total_delivered: number;
   total_opened: number;
