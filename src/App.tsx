@@ -20,6 +20,7 @@ import Workflows from "./pages/Workflows";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 import TrackingPage from "./pages/TrackingPage";
+import Documentation from "./pages/Documentation";
 
 const queryClient = new QueryClient();
 
@@ -73,6 +74,7 @@ const App = () => (
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/track/:token" element={<TrackingPage />} />
+            <Route path="/docs" element={<Documentation />} />
             <Route path="/*" element={<ProtectedLayout />} />
           </Routes>
         </AuthProvider>
