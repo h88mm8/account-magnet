@@ -86,6 +86,62 @@ export type Database = {
           },
         ]
       }
+      campaign_steps: {
+        Row: {
+          campaign_id: string
+          condition_type: string | null
+          created_at: string
+          delay_days: number
+          delay_hours: number
+          id: string
+          is_active: boolean
+          message_template: string | null
+          step_order: number
+          step_type: string
+          subject: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          campaign_id: string
+          condition_type?: string | null
+          created_at?: string
+          delay_days?: number
+          delay_hours?: number
+          id?: string
+          is_active?: boolean
+          message_template?: string | null
+          step_order?: number
+          step_type?: string
+          subject?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string
+          condition_type?: string | null
+          created_at?: string
+          delay_days?: number
+          delay_hours?: number
+          id?: string
+          is_active?: boolean
+          message_template?: string | null
+          step_order?: number
+          step_type?: string
+          subject?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_steps_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaigns: {
         Row: {
           channel: string
@@ -97,8 +153,14 @@ export type Database = {
           id: string
           linkedin_type: string | null
           list_id: string | null
+          max_delay_seconds: number
           message_template: string | null
+          min_delay_seconds: number
           name: string
+          schedule_days: string[] | null
+          schedule_end_time: string | null
+          schedule_start_time: string | null
+          schedule_timezone: string | null
           status: string
           subject: string | null
           total_accepted: number
@@ -121,8 +183,14 @@ export type Database = {
           id?: string
           linkedin_type?: string | null
           list_id?: string | null
+          max_delay_seconds?: number
           message_template?: string | null
+          min_delay_seconds?: number
           name: string
+          schedule_days?: string[] | null
+          schedule_end_time?: string | null
+          schedule_start_time?: string | null
+          schedule_timezone?: string | null
           status?: string
           subject?: string | null
           total_accepted?: number
@@ -145,8 +213,14 @@ export type Database = {
           id?: string
           linkedin_type?: string | null
           list_id?: string | null
+          max_delay_seconds?: number
           message_template?: string | null
+          min_delay_seconds?: number
           name?: string
+          schedule_days?: string[] | null
+          schedule_end_time?: string | null
+          schedule_start_time?: string | null
+          schedule_timezone?: string | null
           status?: string
           subject?: string | null
           total_accepted?: number
