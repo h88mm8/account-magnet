@@ -97,7 +97,7 @@ export default function Documentation() {
             <li><strong>Duas abas:</strong> Pessoas e Empresas</li>
             <li><strong>Filtros para Pessoas:</strong> palavras-chave, cargos, localização, senioridade, tamanho da empresa</li>
             <li><strong>Filtros para Empresas:</strong> nome, palavras-chave, localização, faixa de funcionários</li>
-            <li>Integra com Apollo.io para busca de contatos e empresas</li>
+            <li>Busca integrada de contatos e empresas</li>
             <li>Resultados exibidos em tabela com paginação por cursor</li>
             <li>Possibilidade de salvar resultados em listas de prospecção</li>
           </ul>
@@ -276,7 +276,7 @@ export default function Documentation() {
 
           <h3>Fluxo detalhado</h3>
           <ol className="[&_li]:mb-3 pl-6">
-            <li><strong>Buscar:</strong> O usuário acessa <code>/search</code> e utiliza filtros (cargo, senioridade, setor, localização, tamanho da empresa) para encontrar decisores e empresas via integração Apollo.io.</li>
+            <li><strong>Buscar:</strong> O usuário acessa <code>/search</code> e utiliza filtros (cargo, senioridade, setor, localização, tamanho da empresa) para encontrar decisores e empresas.</li>
             <li><strong>Organizar:</strong> Os resultados são salvos em listas tipadas (leads ou accounts) em <code>/lists</code>. O usuário pode enriquecer os contatos buscando email e telefone verificados, consumindo créditos do sistema.</li>
             <li><strong>Executar:</strong> O usuário vincula uma lista a uma campanha (<code>/campaigns</code>) ou workflow (<code>/workflows</code>):
               <ul>
@@ -295,7 +295,7 @@ export default function Documentation() {
               <tr><th>Integração</th><th>Função</th><th>Mecanismo</th></tr>
             </thead>
             <tbody>
-              <tr><td><strong>Apollo.io</strong></td><td>Busca de contatos e empresas</td><td>Edge Function <code>apollo-search</code></td></tr>
+              <tr><td><strong>Discover</strong></td><td>Busca de contatos e empresas</td><td>Edge Function <code>apollo-search</code></td></tr>
               <tr><td><strong>Unipile</strong></td><td>Envio Email, LinkedIn, WhatsApp + webhooks</td><td>Edge Functions <code>unipile-*</code></td></tr>
               <tr><td><strong>Rastreamento</strong></td><td>Captura page_visit, scroll, cta_click</td><td>Script JS → <code>track-event</code></td></tr>
               <tr><td><strong>Motor batch</strong></td><td>Execução agendada de campanhas e workflows</td><td><code>pg_cron</code> (1 min)</td></tr>
@@ -334,11 +334,11 @@ export default function Documentation() {
               <tr><th>Função</th><th>Propósito</th></tr>
             </thead>
             <tbody>
-              <tr><td><code>apollo-search</code></td><td>Proxy de busca Apollo.io com dedução de créditos</td></tr>
+              <tr><td><code>apollo-search</code></td><td>Proxy de busca de contatos com dedução de créditos</td></tr>
               <tr><td><code>enrich-lead</code></td><td>Enriquecimento individual (email/phone)</td></tr>
               <tr><td><code>enrich-batch-emails</code></td><td>Enriquecimento em lote de emails (até 100)</td></tr>
               <tr><td><code>enrich-batch-phones</code></td><td>Enriquecimento em lote de telefones</td></tr>
-              <tr><td><code>enrich-batch-leads</code></td><td>Enriquecimento completo (Apollo + Apify fallback)</td></tr>
+              <tr><td><code>enrich-batch-leads</code></td><td>Enriquecimento completo de leads</td></tr>
               <tr><td><code>process-campaign-queue</code></td><td>Motor de envio de campanhas</td></tr>
               <tr><td><code>process-workflow-batch</code></td><td>Motor de execução de workflows</td></tr>
               <tr><td><code>unipile-search</code></td><td>Busca de contatos via Unipile</td></tr>
@@ -359,7 +359,7 @@ export default function Documentation() {
             <li><strong>Row-Level Security (RLS):</strong> Todas as tabelas principais possuem políticas que restringem acesso ao <code>user_id</code> autenticado via <code>auth.uid()</code>.</li>
             <li><strong>Autenticação:</strong> Email/senha com confirmação de email obrigatória.</li>
             <li><strong>Isolamento de dados:</strong> Cada usuário acessa exclusivamente seus próprios dados.</li>
-            <li><strong>Edge Functions:</strong> Chaves de API externas (Apollo, Unipile, Apify) armazenadas como secrets no backend.</li>
+            <li><strong>Edge Functions:</strong> Chaves de API externas armazenadas como secrets no backend.</li>
             <li><strong>Blocklist de emails:</strong> Emails com bounce/spam são automaticamente bloqueados.</li>
           </ul>
 
