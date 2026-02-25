@@ -7,10 +7,15 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const APIFY_ACTOR_ID = "2SyF0bVxmgGr8IVCZ";
+const APIFY_POLL_INTERVAL_MS = 3000;
+const APIFY_TIMEOUT_MS = 45000;
+
 /**
- * Enrich basic lead profile data (full name + LinkedIn URL) from Apollo.
- * This does NOT cost credits — it only reveals public profile data.
- * Input: { items: [{ itemId, apolloId }] }
+ * Enrich basic lead profile data (full name, title, company, location, photo)
+ * using Apify LinkedIn Profile Scraper.
+ * This does NOT cost credits.
+ * Input: { items: [{ itemId, linkedinUrl }] }
  */
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -18,9 +23,9 @@ serve(async (req) => {
   }
 
   try {
-    const APOLLO_API_KEY = Deno.env.get("APOLLO_API_KEY");
-    if (!APOLLO_API_KEY) {
-      return new Response(JSON.stringify({ error: "APOLLO_API_KEY not set" }), {
+    const APIFY_API_KEY = Deno.env.get("APIFY_API_KEY");
+    if (!APIFY_API_KEY) {
+      return new Response(JSON.stringify({ error: "APIFY_API_KEY not set" }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -31,7 +36,7 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     const { items } = await req.json() as {
-      items: Array<{ itemId: string; apolloId: string }>;
+      items: Array<{ itemId: string; linkedinUrl?: string; apolloId?: string }>;
     };
 
     if (!items?.length) {
@@ -45,43 +50,92 @@ serve(async (req) => {
 
     for (const item of items) {
       try {
-        const res = await fetch("https://api.apollo.io/api/v1/people/match", {
+        // Get the linkedin_url from payload or from DB
+        let linkedinUrl = item.linkedinUrl || "";
+
+        if (!linkedinUrl) {
+          const { data: dbItem } = await supabase
+            .from("prospect_list_items")
+            .select("linkedin_url, raw_data")
+            .eq("id", item.itemId)
+            .single();
+
+          linkedinUrl = (dbItem?.linkedin_url as string) || 
+            (dbItem?.raw_data as Record<string, unknown>)?.full_linkedin_url as string || "";
+        }
+
+        if (!linkedinUrl) {
+          console.warn(`[enrich-profile] No LinkedIn URL for ${item.itemId}, skipping`);
+          continue;
+        }
+
+        // Start Apify LinkedIn Profile Scraper
+        const actorUrl = `https://api.apify.com/v2/acts/${APIFY_ACTOR_ID}/runs?token=${APIFY_API_KEY}`;
+        const apifyRes = await fetch(actorUrl, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Cache-Control": "no-cache",
-            "x-api-key": APOLLO_API_KEY,
-          },
-          body: JSON.stringify({ id: item.apolloId }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            startUrls: [{ url: linkedinUrl }],
+            maxItems: 1,
+          }),
         });
 
-        if (!res.ok) {
-          console.warn(`[enrich-profile] Apollo error for ${item.itemId}: ${res.status}`);
+        if (!apifyRes.ok) {
+          console.warn(`[enrich-profile] Apify start error for ${item.itemId}: ${apifyRes.status}`);
           continue;
         }
 
-        const data = await res.json();
-        const person = data.person;
-        if (!person) {
-          console.warn(`[enrich-profile] No person returned for ${item.itemId}`);
+        const apifyData = await apifyRes.json();
+        const runId = apifyData?.data?.id;
+        const datasetId = apifyData?.data?.defaultDatasetId;
+
+        if (!runId || !datasetId) {
+          console.warn(`[enrich-profile] No runId/datasetId for ${item.itemId}`);
           continue;
         }
 
-        const fullName = [person.first_name, person.last_name].filter(Boolean).join(" ");
-        const linkedinUrl = person.linkedin_url || "";
-        const photoUrl = person.photo_url || "";
-        const title = person.title || "";
-        const org = person.organization;
-        const company = org?.name || person.organization_name || "";
-        const location = [person.city, person.state, person.country].filter(Boolean).join(", ");
+        // Poll for completion
+        const startTime = Date.now();
+        let profile: Record<string, unknown> | null = null;
 
-        const updateData: Record<string, unknown> = {};
-        if (fullName) updateData.name = fullName;
-        if (linkedinUrl) updateData.linkedin_url = linkedinUrl;
-        if (title) updateData.title = title;
-        if (company) updateData.company = company;
-        if (location) updateData.location = location;
-        if (item.apolloId) updateData.external_id = item.apolloId;
+        while (Date.now() - startTime < APIFY_TIMEOUT_MS) {
+          await new Promise((r) => setTimeout(r, APIFY_POLL_INTERVAL_MS));
+
+          const statusRes = await fetch(
+            `https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_API_KEY}`
+          );
+          const statusData = await statusRes.json();
+          const runStatus = statusData?.data?.status;
+
+          if (runStatus === "SUCCEEDED") {
+            const dsRes = await fetch(
+              `https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_API_KEY}`
+            );
+            const dsItems = await dsRes.json();
+            if (Array.isArray(dsItems) && dsItems.length > 0) {
+              profile = dsItems[0];
+            }
+            break;
+          } else if (["FAILED", "ABORTED", "TIMED-OUT"].includes(runStatus)) {
+            console.warn(`[enrich-profile] Apify run ${runStatus} for ${item.itemId}`);
+            break;
+          }
+        }
+
+        if (!profile) {
+          console.warn(`[enrich-profile] No profile returned for ${item.itemId}`);
+          continue;
+        }
+
+        // Extract profile data
+        const firstName = (profile.firstName || profile.first_name || "") as string;
+        const lastName = (profile.lastName || profile.last_name || "") as string;
+        const fullName = [firstName, lastName].filter(Boolean).join(" ") || 
+          (profile.fullName || profile.name || "") as string;
+        const title = (profile.title || profile.headline || profile.occupation || "") as string;
+        const company = (profile.company || profile.companyName || profile.organization_name || "") as string;
+        const photoUrl = (profile.profilePicture || profile.photo_url || profile.avatar || "") as string;
+        const location = (profile.location || profile.addressLocality || "") as string;
 
         // Merge with existing raw_data
         const { data: existing } = await supabase
@@ -91,10 +145,18 @@ serve(async (req) => {
           .single();
 
         const existingRaw = (existing?.raw_data as Record<string, unknown>) || {};
+
+        const updateData: Record<string, unknown> = {};
+        if (fullName) updateData.name = fullName;
+        if (linkedinUrl) updateData.linkedin_url = linkedinUrl;
+        if (title) updateData.title = title;
+        if (company) updateData.company = company;
+        if (location) updateData.location = location;
+
         updateData.raw_data = {
           ...existingRaw,
           photo_url: photoUrl,
-          apollo_enriched: true,
+          apify_profile_enriched: true,
           full_linkedin_url: linkedinUrl,
         };
 

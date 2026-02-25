@@ -183,22 +183,22 @@ export function useProspectLists() {
       await fetchSavedItemKeys();
       invalidateMetrics();
 
-      // Auto-enrich basic profile data (full name + LinkedIn URL) for Apollo leads
+      // Auto-enrich basic profile data via Apify LinkedIn scraper
       if (inserted && inserted.length > 0) {
-        const apolloItems = inserted
-          .filter((row: Record<string, unknown>) => row.external_id || row.provider_id)
+        const enrichItems = inserted
+          .filter((row: Record<string, unknown>) => row.linkedin_url)
           .map((row: Record<string, unknown>) => ({
             itemId: row.id as string,
-            apolloId: (row.external_id || row.provider_id) as string,
+            linkedinUrl: row.linkedin_url as string,
           }));
 
-        if (apolloItems.length > 0) {
+        if (enrichItems.length > 0) {
           // Fire-and-forget — don't block the UI
           supabase.functions
-            .invoke("enrich-profile-basic", { body: { items: apolloItems } })
+            .invoke("enrich-profile-basic", { body: { items: enrichItems } })
             .then((res) => {
               if (res.data?.enriched > 0) {
-                console.log(`[auto-enrich] ${res.data.enriched}/${apolloItems.length} profiles enriched`);
+                console.log(`[auto-enrich] ${res.data.enriched}/${enrichItems.length} profiles enriched`);
               }
             })
             .catch((err) => console.warn("[auto-enrich] error:", err));
