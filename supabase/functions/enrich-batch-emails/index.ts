@@ -10,6 +10,9 @@ const corsHeaders = {
 const CREDIT_COST_EMAIL = 1;
 const MAX_LEADS = 100;
 const CONCURRENCY = 5;
+const APIFY_ACTOR_ID = "2SyF0bVxmgGr8IVCZ";
+const APIFY_POLL_INTERVAL_MS = 3000;
+const APIFY_TIMEOUT_MS = 45000;
 
 interface LeadInput {
   itemId: string;
@@ -36,8 +39,8 @@ serve(async (req) => {
   }
 
   try {
-    const APOLLO_API_KEY = Deno.env.get("APOLLO_API_KEY");
-    if (!APOLLO_API_KEY) throw new Error("APOLLO_API_KEY not configured");
+    const APIFY_API_KEY = Deno.env.get("APIFY_API_KEY");
+    if (!APIFY_API_KEY) throw new Error("APIFY_API_KEY not configured");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -137,97 +140,91 @@ serve(async (req) => {
       const result: LeadResult = { itemId: input.itemId, emailFound: false, status: "done" };
 
       try {
-        const firstName = input.firstName || (item.name as string)?.split(" ")[0] || "";
-        const lastName = input.lastName || (item.name as string)?.split(" ").slice(1).join(" ") || "";
         const linkedinUrl = input.linkedinUrl || (item.linkedin_url as string) || "";
-        const apolloId = input.apolloId || (item.provider_id as string) || "";
 
-        if (!firstName && !lastName && !linkedinUrl && !apolloId) {
+        if (!linkedinUrl) {
           result.status = "skipped";
-          result.error = "no_identifiers";
+          result.error = "no_linkedin_url";
           await supabase.from("prospect_list_items").update({
             enrichment_status: "done",
-            apollo_reason: "no_strong_identifiers",
+            email_checked_at: new Date().toISOString(),
+            apollo_reason: "no_linkedin_url_for_email",
           }).eq("id", input.itemId);
           return result;
         }
 
-        // Build Apollo /people/match body — prefer apolloId for exact match
-        const apolloBody: Record<string, unknown> = {
-          reveal_personal_emails: true,
-        };
-        if (apolloId) {
-          apolloBody.id = apolloId;
-        } else {
-          if (linkedinUrl) apolloBody.linkedin_url = linkedinUrl;
-          if (firstName) apolloBody.first_name = firstName;
-          if (lastName) apolloBody.last_name = lastName;
-          const company = input.company || (item.company as string) || "";
-          const domain = input.domain || "";
-          if (company) apolloBody.organization_name = company;
-          if (domain) apolloBody.domain = domain;
-        }
+        console.log(`[batch-email] Apify scrape for ${input.itemId}, LinkedIn: ${linkedinUrl}`);
 
-        console.log(`[batch-email] Apollo payload for ${input.itemId}:`, JSON.stringify(apolloBody, null, 2));
-        console.log(`[batch-email] DB item snapshot for ${input.itemId}:`, JSON.stringify({
-          name: item.name,
-          company: item.company,
-          linkedin_url: item.linkedin_url,
-          title: item.title,
-          location: item.location,
-          email: item.email,
-          enrichment_status: item.enrichment_status,
-        }));
-
-        const apolloRes = await fetch("https://api.apollo.io/api/v1/people/match", {
+        // Start Apify run
+        const actorUrl = `https://api.apify.com/v2/acts/${APIFY_ACTOR_ID}/runs?token=${APIFY_API_KEY}`;
+        const apifyRes = await fetch(actorUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-api-key": APOLLO_API_KEY! },
-          body: JSON.stringify(apolloBody),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            startUrls: [{ url: linkedinUrl }],
+            maxItems: 1,
+          }),
         });
 
-        const apolloText = await apolloRes.text();
-        console.log(`[batch-email] Apollo status for ${input.itemId}: ${apolloRes.status}`);
-        console.log(`[batch-email] Apollo response for ${input.itemId}: ${apolloText.substring(0, 500)}`);
+        if (!apifyRes.ok) {
+          throw new Error(`Apify start error [${apifyRes.status}]`);
+        }
 
+        const apifyData = await apifyRes.json();
+        const runId = apifyData?.data?.id;
+        const datasetId = apifyData?.data?.defaultDatasetId;
+        if (!runId || !datasetId) throw new Error("No runId/datasetId from Apify");
+
+        // Poll for completion
         let foundEmail: string | null = null;
+        const startTime = Date.now();
 
-        if (apolloRes.ok) {
-          const apolloData = JSON.parse(apolloText);
-          const person = apolloData.person;
-          console.log(`[batch-email] person found for ${input.itemId}:`, person ? JSON.stringify({
-            id: person.id,
-            first_name: person.first_name,
-            last_name: person.last_name,
-            email: person.email,
-            personal_emails: person.personal_emails,
-            organization_name: person.organization_name,
-          }) : "null");
-          if (person) {
-            foundEmail = person.email || person.personal_emails?.[0] || null;
+        while (Date.now() - startTime < APIFY_TIMEOUT_MS) {
+          await new Promise((r) => setTimeout(r, APIFY_POLL_INTERVAL_MS));
+          const statusRes = await fetch(
+            `https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_API_KEY}`
+          );
+          const statusData = await statusRes.json();
+          const runStatus = statusData?.data?.status;
+
+          if (runStatus === "SUCCEEDED") {
+            const dsRes = await fetch(
+              `https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_API_KEY}`
+            );
+            const dsItems = await dsRes.json();
+            if (Array.isArray(dsItems) && dsItems.length > 0) {
+              const profile = dsItems[0];
+              foundEmail = profile.email || profile.emailAddress || profile.emails?.[0] ||
+                profile.contact?.email || null;
+            }
+            break;
+          } else if (["FAILED", "ABORTED", "TIMED-OUT"].includes(runStatus)) {
+            break;
           }
-        } else {
-          console.error(`[batch-email] Apollo error for ${input.itemId}: ${apolloRes.status} ${apolloText.substring(0, 500)}`);
         }
 
         // Save results
         const updateData: Record<string, unknown> = {
-          apollo_called: true,
+          apify_called: true,
+          apify_finished: true,
+          apify_run_id: runId,
           email_checked_at: new Date().toISOString(),
         };
 
         if (foundEmail) {
           updateData.email = foundEmail;
-          updateData.enrichment_source = "apollo";
+          updateData.enrichment_source = "apify";
           updateData.enrichment_status = "done";
+          updateData.apify_email_found = true;
           result.emailFound = true;
           result.email = foundEmail;
-          result.source = "apollo";
+          result.source = "apify";
 
           const { data: remaining } = await supabase.rpc("deduct_credits", {
             p_user_id: user!.id,
             p_amount: CREDIT_COST_EMAIL,
             p_type: "batch_enrich_email",
-            p_description: `Email encontrado - ${item.name}`,
+            p_description: `Email encontrado (Apify) - ${item.name}`,
             p_reference_id: input.itemId,
           });
 
@@ -242,17 +239,12 @@ serve(async (req) => {
           }
         } else {
           updateData.enrichment_status = "not_found";
-          updateData.apollo_reason = "email_not_found";
+          updateData.apify_email_found = false;
+          updateData.apollo_reason = "email_not_found_apify";
           result.status = "not_found";
         }
 
-        console.log(`[batch-email] DB update for ${input.itemId}:`, JSON.stringify(updateData));
-        const { error: updateErr } = await supabase.from("prospect_list_items").update(updateData).eq("id", input.itemId);
-        if (updateErr) {
-          console.error(`[batch-email] DB update ERROR for ${input.itemId}:`, updateErr.message);
-        } else {
-          console.log(`[batch-email] DB update SUCCESS for ${input.itemId}`);
-        }
+        await supabase.from("prospect_list_items").update(updateData).eq("id", input.itemId);
       } catch (err) {
         console.error(`[batch-email] Error for ${input.itemId}:`, err);
         result.status = "error";
@@ -260,7 +252,7 @@ serve(async (req) => {
         await supabase.from("prospect_list_items").update({
           enrichment_status: "error",
           email_checked_at: new Date().toISOString(),
-          apollo_called: true,
+          apify_called: true,
           apollo_reason: `batch_error: ${result.error}`,
         }).eq("id", input.itemId);
       }
