@@ -1,245 +1,126 @@
 
 
-# Documentacao Completa - ELEV Discover
+# Plano: Migrar Busca/Perfil/Email para Apify, manter Telefone no Apollo
+
+## Resumo da Mudanca
+
+| Fluxo | Atual | Novo |
+|---|---|---|
+| **Busca** | Apollo `/mixed_people/api_search` | Apify LinkedIn scraper |
+| **Revelar Perfil** | Apollo `/people/match` | Apify LinkedIn scraper |
+| **Buscar Email** | Apollo `/people/match` + `reveal_personal_emails` | Apify LinkedIn scraper |
+| **Buscar Telefone** | Apollo `/people/match` + `reveal_phone_number` + webhook | **Sem mudanca** (Apollo) |
 
 ---
 
-## 1. Proposito Geral
+## Questao Critica: Apify para Busca
 
-**ELEV Discover** e um ecossistema SaaS de prospecao B2B projetado para equipes de SDRs (Sales Development Representatives) e BDRs (Business Development Representatives). O sistema unifica em uma unica plataforma todo o ciclo de prospecao comercial: desde a busca de decisores e empresas, passando pela organizacao em listas segmentadas, ate a execucao de campanhas multicanal (Email, LinkedIn e WhatsApp) com rastreamento comportamental e automacao baseada em eventos.
+A busca atual usa Apollo para pesquisar por **filtros** (cargo, senioridade, localizacao, tamanho empresa) e retorna ate 100 resultados paginados. Apify funciona de forma diferente: ele **scrapa perfis do LinkedIn** a partir de URLs ou buscas no LinkedIn.
 
-O problema que resolve: eliminar a fragmentacao de ferramentas (LinkedIn Sales Navigator, ferramentas de email, CRMs, planilhas) ao consolidar busca, enriquecimento, outreach e monitoramento em um fluxo unico e integrado.
+Para migrar a busca para Apify, existem duas opcoes:
 
----
+1. **Apify LinkedIn Search Scraper** (ex: actor `hMvNSpz3JnHgl5jkh` ou similar) -- aceita termos de busca e retorna resultados do LinkedIn Sales Navigator / LinkedIn Search
+2. **Manter Apollo so para busca** e migrar apenas Perfil + Email para Apify
 
-## 2. Usuarios / Perfis
-
-O sistema possui um unico perfil de usuario autenticado (SDR/BDR/Gestor Comercial). Todos os dados sao isolados por `user_id` via Row-Level Security, garantindo que cada usuario ve apenas seus proprios dados. Nao ha perfis administrativos ou multi-tenant visivel na aplicacao atual.
-
----
-
-## 3. Telas e Funcionalidades
-
-### 3.1 Autenticacao (`/auth`)
-- Pagina de marketing + login/signup
-- Apresenta os 4 pilares do produto (Busca, Organizacao, Campanhas, Monitoramento)
-- Formularios de login e cadastro com email/senha via sistema de autenticacao integrado
-
-### 3.2 Busca (`/search`)
-- **Duas abas**: Pessoas e Empresas
-- **Filtros para Pessoas**: palavras-chave, cargos, localizacao, senioridade, tamanho da empresa
-- **Filtros para Empresas**: nome, palavras-chave, localizacao, faixa de funcionarios
-- Integra com Apollo.io para busca de contatos e empresas
-- Resultados exibidos em tabela com paginacao por cursor
-- Possibilidade de salvar resultados em listas de prospecao
-
-### 3.3 Empresas (`/companies`)
-- Busca dedicada de empresas (accounts)
-- Filtros avancados com paginacao
-- Exportacao CSV
-
-### 3.4 Contatos (`/contacts`)
-- Busca dedicada de leads/contatos
-- Filtros avancados com paginacao
-- Exportacao CSV
-
-### 3.5 Listas (`/lists`)
-- CRUD de listas de prospecao (tipo: "leads" ou "accounts")
-- Gerenciamento de itens: busca, selecao, remocao, detalhes
-- **Enriquecimento**: busca de email e telefone (individual ou em lote ate 100 itens) via Edge Functions
-- Exportacao CSV
-- Atualizacao em tempo real via Realtime quando enriquecimento assincrono completa
-
-### 3.6 Campanhas (`/campaigns`)
-- **Campaign Builder Omnichannel** unificado para Email, LinkedIn e WhatsApp
-- **Layout 2 colunas**: configuracoes (esquerda) + editor/preview (direita)
-- **Configuracoes por campanha**:
-  - Nome, lista vinculada, canal (email/linkedin/whatsapp)
-  - Tipo LinkedIn (convite, mensagem, InMail)
-  - Limite diario, delays min/max entre envios
-  - Agendamento: dias permitidos, horario inicio/fim, fuso horario
-  - Status: rascunho, ativa, pausada
-- **Multi-step (campaign_steps)**: sequencias de mensagens com delays e condicoes (ex: parar se respondeu)
-- **Editor rico** com variaveis dinamicas (`{{FIRST_NAME}}`, `{{COMPANY}}`, etc.) e fallback (`{{first_name | "Ola"}}`)
-- **Preview** com dados reais de um lead da lista
-- **Contador de caracteres** (essencial para LinkedIn)
-- **CTA configuravel** para email (botao com texto/cor personalizavel)
-- Metricas por campanha: enviados, entregues, abertos, respondidos, aceitos, cliques, falhas
-
-### 3.7 Workflows (`/workflows`)
-- **Editor visual drag-and-drop** baseado em React Flow
-- **8 tipos de nos**: Start, Send Email, Send LinkedIn, Send WhatsApp, Wait, Condition (bifurcacao true/false), Action (adicionar/remover de lista), End
-- Configuracao de variaveis dinamicas por no
-- Agendamento por workflow (dias, horarios, fuso)
-- **Gatilho automatico**: entrada de contato em lista dispara execucao
-- **Aba de detalhe do workflow** com 3 sub-abas:
-  - Execucoes: status individual por contato
-  - Metricas: KPIs por canal (email/linkedin/whatsapp/site)
-  - Log de eventos: historico granular
-
-### 3.8 Analytics (`/analytics`)
-- **KPIs**: empresas salvas, contatos salvos, taxa de conversao, listas ativas, campanhas ativas, total enviados, total respondidos
-- **Graficos**:
-  - Crescimento por periodo (linha: empresas vs contatos)
-  - Empresas por setor (barras)
-  - Eventos por dia (linha)
-- **Aba Eventos**: log detalhado com filtros por periodo, campanha e tipo de evento (enviado, entregue, respondido, aceito, falha, bounce)
-
-### 3.9 Configuracoes (`/settings`)
-- **Perfil**: nome, avatar
-- **Integracoes**: WhatsApp, LinkedIn, Email (via Unipile)
-- **Email**: assinatura, link de agendamento, blocklist de emails
-- **Notificacoes**: in-app, email, WhatsApp
-- **Assinatura**: resumo do plano
-- **Tracking**: configuracao de pagina de rastreamento (logo, cores, botao, URL de redirect) + script JS embarcavel para rastreamento de site
-
-### 3.10 Ajuda (`/help`)
-- FAQ com perguntas frequentes
-- Links para documentacao, suporte e API docs
+Vou assumir que voce quer migrar **tudo** (busca inclusive) para Apify. Se a busca nao funcionar bem com Apify, poderemos reverter so essa parte.
 
 ---
 
-## 4. Estrutura de Dados (Principais Entidades)
+## Arquivos a Modificar
 
+### 1. `supabase/functions/apollo-search/index.ts` -- Migrar para Apify
+- Trocar chamada de `api.apollo.io/api/v1/mixed_people/api_search` por actor Apify de busca no LinkedIn
+- Para **pessoas**: usar Apify LinkedIn People Search actor
+- Para **empresas**: usar Apify LinkedIn Company Search actor
+- Manter mesma interface de resposta (`{ items, pagination }`)
+- Manter logica de creditos (1 por pagina)
+- Trocar `APOLLO_API_KEY` por `APIFY_API_KEY`
+
+### 2. `supabase/functions/enrich-profile-basic/index.ts` -- Migrar para Apify
+- Substituir chamada Apollo `/people/match` por Apify LinkedIn Profile Scraper (actor `2SyF0bVxmgGr8IVCZ`)
+- Input: LinkedIn URL do lead (ja disponivel no `raw_data` ou `linkedin_url`)
+- Extrair: nome completo, titulo, empresa, localizacao, foto
+- Se nao houver LinkedIn URL, usar `apolloId` para tentar construir URL ou pular
+- **Sem custo de creditos** (mantém comportamento atual)
+
+### 3. `supabase/functions/enrich-lead/index.ts` -- Email via Apify
+- Secao `searchType === "email"` (linhas 131-230): trocar Apollo por Apify LinkedIn scraper
+- Disparar actor Apify com LinkedIn URL do lead
+- Polling sincrono (ate ~30s) pelo resultado do dataset
+- Extrair email do resultado Apify (`profile.email`, `profile.emails[0]`)
+- Se Apify nao encontrar, marcar como `not_found` (sem fallback Apollo)
+- Secao `searchType === "phone"` (linhas 232-352): **JA ESTA NO APIFY** -- manter como esta
+
+**Espera:** Na verdade, reli o codigo e o phone no `enrich-lead` ja usa Apify! Mas voce quer phone no Apollo. Entao preciso **reverter phone para Apollo** nesse arquivo tambem.
+
+Correcao do plano:
+- `searchType === "email"`: **Apollo -> Apify** (scraper LinkedIn)
+- `searchType === "phone"`: **Apify -> Apollo** (voltar para `/people/match` + `reveal_phone_number` + webhook)
+
+### 4. `supabase/functions/enrich-batch-emails/index.ts` -- Email em lote via Apify
+- Substituir chamadas Apollo `/people/match` + `reveal_personal_emails` por Apify scraper
+- Para cada lead: disparar run Apify com LinkedIn URL, poll resultado, extrair email
+- Manter concorrencia de 5 e limite de 100 leads
+- Logica de creditos igual (1 credito por email encontrado)
+
+### 5. `supabase/functions/enrich-batch-phones/index.ts` -- Manter no Apollo
+- **Sem mudanca significativa** -- ja usa Apollo `/people/match` + `reveal_phone_number` + webhook
+- Continua funcionando como esta
+
+### 6. `supabase/functions/enrich-batch-leads/index.ts` -- Email via Apify
+- Secao de Apollo email: trocar por Apify scraper (mesmo padrao do batch-emails)
+- Secao de Apify fallback: agora Apify e o **primario** para email, nao fallback
+- Phone bonus do Apollo: remover (phone so vem pelo fluxo dedicado `enrich-batch-phones`)
+
+### 7. `supabase/functions/webhooks-apify/index.ts` -- Ajustar para novo fluxo
+- Quando `searchType === "phone"`: remover (phone agora e Apollo, nao Apify)
+- Quando `searchType === "email"`: processar resultado Apify para email
+- Remover fallback Apollo para email (Apify e o unico provedor)
+
+### 8. `supabase/functions/webhooks-apollo/index.ts` -- Manter como esta
+- Continua recebendo webhooks de phone do Apollo
+- Sem mudanca
+
+### 9. `src/hooks/useProspectLists.ts` -- Ajustar auto-enrich
+- Linhas 186-206: `enrich-profile-basic` agora precisa de `linkedin_url` ao inves de `apolloId`
+- Passar `linkedinUrl` junto com `itemId` no payload
+
+---
+
+## Detalhes Tecnicos
+
+### Apify Actor para Scraping LinkedIn
+- Actor ID: `2SyF0bVxmgGr8IVCZ` (LinkedIn Profile Scraper) -- ja usado no projeto
+- Input: `{ startUrls: [{ url: linkedinUrl }], maxItems: 1 }`
+- Output: perfil com `email`, `emails[]`, `phone`, `phones[]`, `firstName`, `lastName`, etc.
+
+### Apify Actor para Busca LinkedIn
+- Precisaremos identificar o actor correto para LinkedIn People Search
+- Alternativa: manter Apollo **somente para busca** enquanto migra perfil/email para Apify
+- A busca por filtros (cargo, senioridade, localizacao) e algo que Apollo faz nativamente mas Apify depende de um actor especifico
+
+### Fluxo de Phone (Apollo -- sem mudanca)
 ```text
-+---------------------+       +----------------------+       +------------------+
-|   prospect_lists    |1─────N|  prospect_list_items  |       |    campaigns     |
-|---------------------|       |----------------------|       |------------------|
-| id, name, list_type |       | id, list_id, name    |       | id, name, channel|
-| user_id, description|       | email, phone, company|       | list_id, status  |
-+---------------------+       | linkedin_url, title  |       | daily_limit      |
-                               | enrichment_status    |       | schedule_*       |
-                               | item_type (lead/acct)|       | message_template |
-                               +----------------------+       +--------+---------+
-                                                                       |1
-                                                                       │
-                                                              +--------N---------+
-                                                              |  campaign_steps  |
-                                                              |------------------|
-                                                              | step_order, type |
-                                                              | message_template |
-                                                              | delay_days/hours |
-                                                              | condition_type   |
-                                                              +------------------+
-
-+---------------------+       +----------------------+       +------------------+
-|   campaign_leads    |       |       events         |       |    workflows     |
-|---------------------|       |----------------------|       |------------------|
-| campaign_id, lead_id|       | id, user_id          |       | id, name, status |
-| status, sent_at     |       | contact_id           |       | trigger_list_id  |
-| delivered_at        |       | campaign_id          |       | schedule_*       |
-| replied_at          |       | workflow_id          |       +--------+---------+
-+---------------------+       | channel, event_type  |                |1
-                               | metadata, created_at |       +--------N---------+
-                               +----------------------+       |  workflow_nodes  |
-                                                              |------------------|
-+---------------------+       +----------------------+       | type, config     |
-|  user_integrations  |       |  workflow_executions  |       | next/true/false  |
-|---------------------|       |----------------------|       | _node_id         |
-| provider (linkedin/ |       | workflow_id           |       +------------------+
-|   email/whatsapp)   |       | contact_id, status   |
-| unipile_account_id  |       | current_node_id      |
-| status              |       | next_run_at          |
-+---------------------+       +----------------------+
-
-Outras tabelas: profiles, user_credits, credit_transactions, email_settings,
-email_blocklist, messages_sent/received, link_tracking, link_clicks,
-email_clicks, notifications, tracking_page_settings, instances
+enrich-lead (phone) -> Apollo /people/match + reveal_phone_number + webhook_url
+                                    |
+                              webhooks-apollo -> atualiza prospect_list_items.phone
 ```
 
-### Tabelas-chave:
-
-| Tabela | Proposito |
-|---|---|
-| `prospect_lists` | Listas de prospecao (leads ou accounts) |
-| `prospect_list_items` | Contatos/empresas salvos com dados enriquecidos |
-| `campaigns` | Campanhas multicanal com config de scheduling/limites |
-| `campaign_steps` | Steps de sequencia multi-etapa (LinkedIn multi-step) |
-| `campaign_leads` | Status individual de cada lead em cada campanha |
-| `events` | Tabela unificada de rastreamento (todos os canais + site) |
-| `workflows` | Automacoes com gatilhos e agendamento |
-| `workflow_nodes` | Nos do fluxo visual (start, email, wait, condition, etc.) |
-| `workflow_executions` | Estado de execucao por contato em cada workflow |
-| `user_integrations` | Conexoes com provedores (LinkedIn, Email) via Unipile |
-| `whatsapp_connections` | Conexao WhatsApp dedicada |
-| `user_credits` | Saldo de creditos do usuario |
-| `email_settings` | Assinatura de email e link de agendamento |
-| `email_blocklist` | Emails bloqueados (bounce/spam) |
-| `link_tracking` / `link_clicks` | Rastreamento de cliques em links |
-
----
-
-## 5. Fluxo Principal de Uso
-
+### Novo Fluxo de Email (Apify)
 ```text
-1. BUSCAR                    2. ORGANIZAR
-   ┌──────────────┐            ┌──────────────┐
-   │ /search      │───salvar──>│ /lists       │
-   │ Filtrar por  │            │ Criar listas │
-   │ cargo, setor,│            │ Enriquecer   │
-   │ localizacao  │            │ email/phone  │
-   └──────────────┘            └──────┬───────┘
-                                      │
-                    ┌─────────────────┴─────────────────┐
-                    v                                   v
-            3a. CAMPANHAS                      3b. WORKFLOWS
-   ┌──────────────────────┐            ┌──────────────────────┐
-   │ /campaigns           │            │ /workflows           │
-   │ Criar campanha       │            │ Criar automacao      │
-   │ Email/LinkedIn/WA    │            │ Cadencia multi-canal │
-   │ Multi-step sequences │            │ Condicoes baseadas   │
-   │ Agendamento          │            │ em comportamento     │
-   └──────────┬───────────┘            └──────────┬───────────┘
-              │                                   │
-              └───────────────┬───────────────────┘
-                              v
-                    4. MONITORAR
-              ┌──────────────────────┐
-              │ /analytics           │
-              │ KPIs em tempo real   │
-              │ Eventos por canal    │
-              │ Graficos de evolucao │
-              └──────────────────────┘
+enrich-lead (email) -> Apify actor run (LinkedIn URL)
+                           |
+                     Poll sincrono (~30s)
+                           |
+                     Dataset result -> extrair email -> atualiza DB
 ```
 
-**Fluxo detalhado:**
-
-1. **Buscar**: O usuario acessa `/search` e utiliza filtros (cargo, senioridade, setor, localizacao, tamanho da empresa) para encontrar decisores e empresas via integracao Apollo.io.
-
-2. **Organizar**: Os resultados sao salvos em listas tipadas (leads ou accounts) em `/lists`. O usuario pode enriquecer os contatos buscando email e telefone verificados, consumindo creditos do sistema.
-
-3. **Executar**: O usuario vincula uma lista a uma campanha (`/campaigns`) ou workflow (`/workflows`):
-   - **Campanhas**: disparo direto multicanal com scheduling, limites diarios e multi-step (convite → mensagem → follow-up para LinkedIn).
-   - **Workflows**: automacoes visuais com logica condicional (ex: "se respondeu, parar; se nao, enviar follow-up em 3 dias").
-
-4. **Monitorar**: Em `/analytics`, o usuario acompanha KPIs agregados, eventos por canal/campanha, e identifica leads com maior engajamento. As metricas sao derivadas da tabela unificada `events`, alimentada por webhooks dos provedores (Unipile) e pelo script de rastreamento de site.
-
 ---
 
-## 6. Integracao Tecnica
+## Riscos e Consideracoes
 
-- **Apollo.io**: busca de contatos e empresas (via Edge Function `apollo-search`)
-- **Unipile**: envio de Email, LinkedIn (convites + mensagens) e WhatsApp; webhooks para delivery/reply/bounce
-- **Rastreamento de site**: script JS embarcavel que captura `page_visit`, `scroll_depth`, `cta_click` (via Edge Function `track-event`)
-- **Motor de processamento**: Edge Function `process-campaign-queue` (campanhas) e `process-workflow-batch` (workflows), executadas via `pg_cron` a cada minuto
-- **Creditos**: sistema de saldo por usuario consumido nas operacoes de enriquecimento
-
----
-
-## 7. Stack Tecnologica
-
-| Camada | Tecnologia |
-|---|---|
-| Frontend | React 18 + TypeScript + Vite |
-| UI | Tailwind CSS + shadcn/ui (Radix) |
-| Estado | TanStack React Query |
-| Roteamento | React Router v6 |
-| Editor visual | React Flow (@xyflow/react) |
-| Editor de texto | TipTap |
-| Graficos | Recharts |
-| Backend | Lovable Cloud (Supabase) |
-| Funcoes serverless | Edge Functions (Deno) |
-| Autenticacao | Sistema integrado (email/senha) |
-| Tempo real | Realtime (postgres_changes) |
-| Agendamento | pg_cron |
+1. **Busca via Apify**: nao tem a mesma experiencia que Apollo (filtros estruturados). Pode precisar de um actor especifico ou manter Apollo so para busca
+2. **LinkedIn URL obrigatoria**: para Apify funcionar no perfil/email, precisa da URL do LinkedIn. O fluxo de profile-basic atualmente recebe `apolloId` e nao `linkedinUrl` -- precisa adaptar
+3. **Tempo de resposta**: Apify scraper pode levar 15-45s por perfil vs Apollo que e instantaneo. O enriquecimento individual tera delay
+4. **Rate limits Apify**: processar 100 leads em lote, cada um com um run Apify separado, pode ser lento. Alternativa: enviar multiplas URLs em um unico run
 
