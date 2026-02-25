@@ -64,7 +64,7 @@ const ApolloSearch = () => {
       setPResults(data.items);
       setPPagination(data.pagination);
     } catch (err) {
-      toast({ title: "Erro na busca Apollo", description: err instanceof Error ? err.message : "Falha", variant: "destructive" });
+      toast({ title: "Erro na busca", description: err instanceof Error ? err.message : "Falha", variant: "destructive" });
       setPResults([]);
     } finally {
       setPLoading(false);
@@ -86,7 +86,7 @@ const ApolloSearch = () => {
       setCResults(data.items);
       setCPagination(data.pagination);
     } catch (err) {
-      toast({ title: "Erro na busca Apollo", description: err instanceof Error ? err.message : "Falha", variant: "destructive" });
+      toast({ title: "Erro na busca", description: err instanceof Error ? err.message : "Falha", variant: "destructive" });
       setCResults([]);
     } finally {
       setCLoading(false);
@@ -110,7 +110,7 @@ const ApolloSearch = () => {
       r.title || "", r.company || "", r.location || "",
       r.email || "", r.phoneNumber || "", r.linkedinUrl || "",
     ]);
-    downloadCsv([headers, ...rows], "apollo-contatos.csv");
+    downloadCsv([headers, ...rows], "contatos.csv");
   };
 
   const handleExportCompanies = () => {
@@ -120,7 +120,7 @@ const ApolloSearch = () => {
       r.name || "", r.industry || "", r.location || "", r.employeeCount || "",
       r.website || "", r.phone || "", r.linkedinUrl || "",
     ]);
-    downloadCsv([headers, ...rows], "apollo-empresas.csv");
+    downloadCsv([headers, ...rows], "empresas.csv");
   };
 
   const downloadCsv = (data: string[][], filename: string) => {
@@ -137,11 +137,10 @@ const ApolloSearch = () => {
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="font-display text-2xl font-bold text-foreground">Busca Apollo</h1>
-            <Badge variant="secondary" className="text-xs">API</Badge>
+            <h1 className="font-display text-2xl font-bold text-foreground">Discover Contatos</h1>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Encontre leads e empresas diretamente pelo Apollo. Resultados podem ser salvos nas mesmas listas.
+            Encontre leads e empresas. Resultados podem ser salvos nas mesmas listas.
           </p>
         </div>
       </div>
