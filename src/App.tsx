@@ -21,6 +21,7 @@ import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 import TrackingPage from "./pages/TrackingPage";
 import Documentation from "./pages/Documentation";
+import AdminBilling from "./pages/AdminBilling";
 
 const queryClient = new QueryClient();
 
@@ -55,6 +56,7 @@ function ProtectedLayout() {
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/help" element={<Help />} />
+              <Route path="/admin/billing" element={<AdminBilling />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </main>
