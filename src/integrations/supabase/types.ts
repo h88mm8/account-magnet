@@ -915,6 +915,39 @@ export type Database = {
         }
         Relationships: []
       }
+      resend_settings: {
+        Row: {
+          created_at: string
+          id: string
+          resend_api_key_encrypted: string | null
+          sender_domain: string | null
+          sender_email: string | null
+          sender_name: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          resend_api_key_encrypted?: string | null
+          sender_domain?: string | null
+          sender_email?: string | null
+          sender_name?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          resend_api_key_encrypted?: string | null
+          sender_domain?: string | null
+          sender_email?: string | null
+          sender_name?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       tracking_page_settings: {
         Row: {
           background_color: string

@@ -165,20 +165,15 @@ async function processSendEmailNode(
     return { nextNodeId: node.next_node_id, delay: 0 };
   }
 
-  const UNIPILE_BASE_URL = Deno.env.get("UNIPILE_BASE_URL");
-  const UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY");
-
-  // Get email integration account
-  const { data: integration } = await supabase
-    .from("user_integrations")
-    .select("unipile_account_id")
+  // Get Resend config for this user
+  const { data: resendCfg } = await supabase
+    .from("resend_settings")
+    .select("resend_api_key_encrypted, sender_email, sender_name")
     .eq("user_id", execution.user_id)
-    .eq("provider", "email")
-    .eq("status", "connected")
     .single();
 
-  if (!integration?.unipile_account_id || !UNIPILE_BASE_URL || !UNIPILE_API_KEY) {
-    await logExecution(supabase, execution.id, node.id, "send_email_fail", { reason: "Email not connected" });
+  if (!resendCfg?.resend_api_key_encrypted || !resendCfg?.sender_email) {
+    await logExecution(supabase, execution.id, node.id, "send_email_fail", { reason: "Resend not configured" });
     return { nextNodeId: node.next_node_id, delay: 0 };
   }
 
@@ -201,25 +196,30 @@ async function processSendEmailNode(
   }
 
   try {
-    const formData = new FormData();
-    formData.append("account_id", integration.unipile_account_id);
-    formData.append("body", body);
-    formData.append("subject", subject);
-    formData.append("to", JSON.stringify([{ identifier: contact.email, display_name: contact.name || "" }]));
+    const fromAddress = `${resendCfg.sender_name} <${resendCfg.sender_email}>`;
+    console.log(`[WF] Sending email to ${contact.email} via Resend from ${fromAddress}`);
 
-    const resp = await fetch(`${UNIPILE_BASE_URL}/api/v1/emails`, {
+    const resp = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { "X-API-KEY": UNIPILE_API_KEY },
-      body: formData,
+      headers: {
+        "Authorization": `Bearer ${resendCfg.resend_api_key_encrypted}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: fromAddress,
+        to: [contact.email],
+        subject,
+        html: body,
+      }),
     });
 
     if (!resp.ok) {
       const errBody = await resp.text().catch(() => "");
-      throw new Error(`Email send failed [${resp.status}]: ${errBody.slice(0, 200)}`);
+      throw new Error(`Resend send failed [${resp.status}]: ${errBody.slice(0, 200)}`);
     }
 
-    const emailResp = await resp.json();
-    const unipileMessageId = emailResp?.id || emailResp?.message_id || null;
+    const resendData = await resp.json();
+    const resendId = resendData?.id || null;
 
     // Record in messages_sent
     await supabase.from("messages_sent").insert({
@@ -229,10 +229,10 @@ async function processSendEmailNode(
       message_type: "email",
       status: "sent",
       sent_at: new Date().toISOString(),
-      unipile_message_id: unipileMessageId,
+      unipile_message_id: resendId, // reusing field for Resend ID
     });
 
-    await recordEvent(supabase, execution.user_id, execution.contact_id, execution.workflow_id, execution.id, "email", "sent", { subject, unipile_message_id: unipileMessageId });
+    await recordEvent(supabase, execution.user_id, execution.contact_id, execution.workflow_id, execution.id, "email", "sent", { subject, resend_id: resendId });
     await logExecution(supabase, execution.id, node.id, "send_email_ok", { to: contact.email });
 
     return { nextNodeId: node.next_node_id, delay: randomDelay() * 1000 };

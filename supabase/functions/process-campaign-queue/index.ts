@@ -220,25 +220,24 @@ Deno.serve(async (req) => {
           continue;
         }
         channelAccountId = waConn.unipile_account_id;
-      } else if (campaign.channel === "linkedin" || campaign.channel === "email") {
+      } else if (campaign.channel === "linkedin") {
         // Use per-user integration account
         const { data: integration } = await supabase
           .from("user_integrations")
           .select("status, unipile_account_id")
           .eq("user_id", campaign.user_id)
-          .eq("provider", campaign.channel)
+          .eq("provider", "linkedin")
           .eq("status", "connected")
           .single();
 
         if (!integration || !integration.unipile_account_id) {
-          const label = campaign.channel === "linkedin" ? "LinkedIn" : "Email";
-          campResult.errors.push(`${label} not connected for this user`);
+          campResult.errors.push("LinkedIn not connected for this user");
           await supabase
             .from("campaign_leads")
             .update({
               status: "failed",
               failed_at: new Date().toISOString(),
-              error_message: `${label} não conectado. Conecte nas Configurações.`,
+              error_message: "LinkedIn não conectado. Conecte nas Configurações.",
             })
             .eq("campaign_id", campaign.id)
             .eq("status", "pending");
@@ -247,6 +246,31 @@ Deno.serve(async (req) => {
           continue;
         }
         channelAccountId = integration.unipile_account_id;
+      } else if (campaign.channel === "email") {
+        // Email uses Resend - check resend_settings
+        const { data: resendCfg } = await supabase
+          .from("resend_settings")
+          .select("resend_api_key_encrypted, sender_email, sender_name, sender_domain")
+          .eq("user_id", campaign.user_id)
+          .single();
+
+        if (!resendCfg?.resend_api_key_encrypted || !resendCfg?.sender_email) {
+          campResult.errors.push("Resend not configured for this user");
+          await supabase
+            .from("campaign_leads")
+            .update({
+              status: "failed",
+              failed_at: new Date().toISOString(),
+              error_message: "Email (Resend) não configurado. Configure em Configurações > E-mail.",
+            })
+            .eq("campaign_id", campaign.id)
+            .eq("status", "pending");
+          await supabase.from("campaigns").update({ status: "paused" }).eq("id", campaign.id);
+          results.push(campResult);
+          continue;
+        }
+        // Store resend config for later use
+        (campaign as any)._resendConfig = resendCfg;
       }
 
       // Count sent today for daily limit
@@ -306,7 +330,7 @@ Deno.serve(async (req) => {
           let success = false;
           let errorMsg = "";
 
-          // ============ EMAIL ============
+          // ============ EMAIL (via Resend) ============
           if (campaign.channel === "email") {
             if (!leadData.email) {
               errorMsg = "Sem endereço de email";
@@ -319,12 +343,13 @@ Deno.serve(async (req) => {
                 .eq("email", leadData.email.toLowerCase().trim())
                 .maybeSingle();
 
+              const resendCfg = (campaign as any)._resendConfig;
               if (blocked && blocked.bounce_count >= 3) {
                 errorMsg = `Email bloqueado (${blocked.reason}, ${blocked.bounce_count} falhas)`;
                 console.log(`[BLOCKLIST] Skipping ${leadData.email}: ${errorMsg}`);
-              } else if (!UNIPILE_BASE_URL || !UNIPILE_API_KEY || !channelAccountId) {
-              errorMsg = "Provedor de email não configurado";
-            } else {
+              } else if (!resendCfg?.resend_api_key_encrypted || !resendCfg?.sender_email) {
+                errorMsg = "Resend não configurado";
+              } else {
               // Personalise template variables
               let rawMessage = (campaign.message_template || "")
                 .replace(/\{\{FIRST_NAME\}\}/gi, (leadData.name || "").split(" ")[0] || "")
@@ -334,21 +359,20 @@ Deno.serve(async (req) => {
                 .replace(/\{\{EMAIL\}\}/gi, leadData.email || "")
                 .replace(/\{\{COMPANY\}\}/gi, leadData.company || "");
 
-              // Convert plain text line breaks to HTML (if not already HTML)
+              // Convert plain text line breaks to HTML
               if (!rawMessage.includes("<p>") && !rawMessage.includes("<br") && !rawMessage.includes("<div")) {
                 rawMessage = rawMessage.replace(/\n/g, "<br>");
               }
 
-              // Replace {{TRACKING_URL}} token with site URL + contact_id
+              // Replace {{TRACKING_URL}} token
               const siteBase = Deno.env.get("TRACKING_SITE_URL") || "https://account-magnet.lovable.app";
               const trackingUrlForLead = `${siteBase}/?contact_id=${lead.lead_id}`;
               rawMessage = rawMessage.replace(/\{\{TRACKING_URL\}\}/g, trackingUrlForLead);
 
-              // Inject contact_id into ALL external links (except mailto: and anchors)
+              // Inject contact_id into ALL external links
               rawMessage = rawMessage.replace(
                 /href="(https?:\/\/[^"]+)"/gi,
-                (match, url) => {
-                  // Skip already-processed tracking URLs and supabase redirect URLs
+                (match: string, url: string) => {
                   if (url.includes("contact_id=") || url.includes("supabase.co/functions")) return match;
                   try {
                     const parsed = new URL(url);
@@ -360,10 +384,10 @@ Deno.serve(async (req) => {
                 }
               );
 
-              // Wrap all URLs in message with short tracking codes
+              // Wrap URLs for tracking
               const message = await wrapUrlsInMessage(supabase, rawMessage, campaign.user_id, lead.lead_id, lead.id, SUPABASE_PROJECT_ID);
 
-              // ── Build CTA tracking button (placed BEFORE signature) ──
+              // Build CTA tracking button
               let ctaBlock = "";
               try {
                 const { data: trackSettings } = await supabase
@@ -373,7 +397,6 @@ Deno.serve(async (req) => {
                   .single();
 
                 if (trackSettings?.redirect_url) {
-                  // Generate HMAC token
                   const tokenResp = await fetch(
                     `${Deno.env.get("SUPABASE_URL")}/functions/v1/track-click?action=generate`,
                     {
@@ -393,7 +416,6 @@ Deno.serve(async (req) => {
                   if (tokenData.token) {
                     const appUrl = Deno.env.get("TRACKING_SITE_URL") || "https://account-magnet.lovable.app";
                     const btnUrl = `${appUrl}/track/${tokenData.token}`;
-                    // Use per-campaign CTA config
                     const btnText = campaign.cta_button_text || "Acessar site";
                     const btnColor = campaign.cta_button_color || "#3b82f6";
                     const btnFontColor = campaign.cta_button_font_color || "#ffffff";
@@ -404,25 +426,22 @@ Deno.serve(async (req) => {
                           ${btnText}
                         </a>
                       </div>`;
-                    console.log(`[TRACKING] Injected tracking button for lead ${lead.lead_id}`);
                   }
                 }
               } catch (trackErr) {
                 console.error(`[TRACKING] Failed to inject tracking button:`, trackErr.message);
               }
 
-              // Append CTA button to message (before signature)
               let finalBody = message + ctaBlock;
 
-              // Append email signature if configured
+              // Append email signature
               const { data: emailSettings } = await supabase
-                .from("email_settings" as any)
+                .from("email_settings")
                 .select("email_signature")
                 .eq("user_id", campaign.user_id)
                 .single();
-              const signature = (emailSettings as any)?.email_signature;
+              const signature = emailSettings?.email_signature;
               if (signature) {
-                // Convert \n to <br> in signature too
                 let sigHtml = signature;
                 if (!sigHtml.includes("<p>") && !sigHtml.includes("<br") && !sigHtml.includes("<div")) {
                   sigHtml = sigHtml.replace(/\n/g, "<br>");
@@ -430,53 +449,51 @@ Deno.serve(async (req) => {
                 finalBody += `<br/><br/><div style="border-top:1px solid #e2e8f0;padding-top:12px;color:#64748b;font-size:13px;">${sigHtml}</div>`;
               }
 
-
+              // Send via Resend API
               try {
-                console.log(`[SEND] Email to ${leadData.email} via account ${channelAccountId}`);
-                const formData = new FormData();
-                formData.append("account_id", channelAccountId);
-                formData.append("to", JSON.stringify([{ identifier: leadData.email, display_name: leadData.name || "" }]));
-                formData.append("subject", campaign.subject || "Hello");
-                formData.append("body", finalBody);
-                const resp = await fetch(`${UNIPILE_BASE_URL}/api/v1/emails`, {
+                const fromAddress = `${resendCfg.sender_name} <${resendCfg.sender_email}>`;
+                console.log(`[SEND] Email to ${leadData.email} via Resend from ${fromAddress}`);
+
+                const resendResp = await fetch("https://api.resend.com/emails", {
                   method: "POST",
                   headers: {
-                    "X-API-KEY": UNIPILE_API_KEY,
-                    "accept": "application/json",
+                    "Authorization": `Bearer ${resendCfg.resend_api_key_encrypted}`,
+                    "Content-Type": "application/json",
                   },
-                  body: formData,
+                  body: JSON.stringify({
+                    from: fromAddress,
+                    to: [leadData.email],
+                    subject: campaign.subject || "Hello",
+                    html: finalBody,
+                  }),
                 });
-                if (resp.ok) {
+
+                if (resendResp.ok) {
                   success = true;
-                  // Extract and store Unipile message ID for webhook matching
                   try {
-                    const emailResp = await resp.json();
-                    const unipileMessageId = emailResp?.id || emailResp?.message_id || emailResp?.object_id || "";
-                    if (unipileMessageId) {
-                      await supabase.from("messages_sent").insert({
-                        user_id: campaign.user_id,
-                        lead_id: lead.lead_id,
-                        campaign_id: campaign.id,
-                        campaign_lead_id: lead.id,
-                        content: campaign.subject || "",
-                        message_type: "email",
-                        status: "sent",
-                        unipile_message_id: unipileMessageId,
-                      });
-                      console.log(`[SEND] Email sent successfully, unipile_msg_id=${unipileMessageId}`);
-                    } else {
-                      console.log(`[SEND] Email sent successfully (no message ID in response)`);
-                    }
+                    const resendData = await resendResp.json();
+                    const resendId = resendData?.id || "";
+                    await supabase.from("messages_sent").insert({
+                      user_id: campaign.user_id,
+                      lead_id: lead.lead_id,
+                      campaign_id: campaign.id,
+                      campaign_lead_id: lead.id,
+                      content: campaign.subject || "",
+                      message_type: "email",
+                      status: "sent",
+                      unipile_message_id: resendId, // reusing field for Resend ID
+                    });
+                    console.log(`[SEND] Email sent via Resend, id=${resendId}`);
                   } catch (parseErr) {
-                    console.log(`[SEND] Email sent successfully (response parse failed: ${parseErr.message})`);
+                    console.log(`[SEND] Email sent via Resend (response parse failed: ${parseErr.message})`);
                   }
                 } else {
-                  const errBody = await resp.text().catch(() => "");
-                  errorMsg = `Email API error [${resp.status}]: ${errBody.slice(0, 200)}`;
+                  const errBody = await resendResp.text().catch(() => "");
+                  errorMsg = `Resend API error [${resendResp.status}]: ${errBody.slice(0, 200)}`;
                   console.error(`[SEND_FAIL] ${errorMsg}`);
 
-                  // Auto-blocklist: upsert bounce count, block at 3+
-                  if (leadData.email) {
+                  // Auto-blocklist on hard failures
+                  if (resendResp.status === 422 && leadData.email) {
                     try {
                       const emailLower = leadData.email.toLowerCase().trim();
                       const { data: existing } = await supabase
@@ -499,12 +516,18 @@ Deno.serve(async (req) => {
                           bounce_count: 1,
                         });
                       }
-                      console.log(`[BLOCKLIST] Registered bounce for ${emailLower}`);
                     } catch (blErr) {
-                      console.error(`[BLOCKLIST] Failed to register bounce:`, blErr.message);
+                      console.error(`[BLOCKLIST] Failed:`, blErr.message);
                     }
                   }
                 }
+              } catch (e) {
+                errorMsg = `Resend request failed: ${e.message}`;
+                console.error(`[SEND_FAIL] ${errorMsg}`);
+              }
+            }
+            }
+          }
               } catch (e) {
                 errorMsg = `Email request failed: ${e.message}`;
                 console.error(`[SEND_FAIL] ${errorMsg}`);

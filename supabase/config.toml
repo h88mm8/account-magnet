@@ -56,3 +56,9 @@ verify_jwt = false
 
 [functions.track-event]
 verify_jwt = false
+
+[functions.save-resend-settings]
+verify_jwt = false
+
+[functions.webhooks-resend]
+verify_jwt = false
