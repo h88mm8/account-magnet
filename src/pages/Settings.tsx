@@ -403,7 +403,7 @@ const Settings = () => {
         <TabsContent value="tracking">
           <div className="space-y-4">
             <TrackingPageSettings />
-            <SiteTrackingScript />
+            <WebTrackingSettings />
           </div>
         </TabsContent>
       </Tabs>
@@ -602,21 +602,77 @@ function TrackingPageSettings() {
   );
 }
 
-function SiteTrackingScript() {
+function WebTrackingSettings() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
+
+  const { data: settings, isLoading } = useQuery({
+    queryKey: ["web-tracking-settings"],
+    queryFn: async () => {
+      if (!user) return null;
+      const { data } = await supabase
+        .from("web_tracking_settings" as any)
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      return data as any;
+    },
+    enabled: !!user,
+  });
+
+  const [siteUrl, setSiteUrl] = useState("");
+  const [gtmId, setGtmId] = useState("");
+
+  useEffect(() => {
+    if (settings) {
+      setSiteUrl(settings.site_url || "");
+      setGtmId(settings.gtm_id || "");
+    }
+  }, [settings]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!user) throw new Error("Not authenticated");
+      const payload = {
+        user_id: user.id,
+        site_url: siteUrl || null,
+        gtm_id: gtmId || null,
+      };
+      const { error } = await supabase
+        .from("web_tracking_settings" as any)
+        .upsert(payload, { onConflict: "user_id" });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["web-tracking-settings"] });
+      toast({ title: "Configurações de tracking web salvas!" });
+    },
+    onError: (e: any) => {
+      toast({ title: "Erro ao salvar", description: e.message, variant: "destructive" });
+    },
+  });
+
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || "rwagvawmceempafacnfh";
   const trackingEndpoint = `https://${projectId}.supabase.co/functions/v1/track-event`;
+  const orgToken = settings?.org_token || "[salve para gerar]";
 
-  const script = `<!-- ELEV Site Tracking -->
+  const script = `<!-- ELEV Web Tracking -->
 <script>
 (function() {
+  var ORG = "${orgToken}";
   var ENDPOINT = "${trackingEndpoint}";
   var params = new URLSearchParams(window.location.search);
-  var contactId = params.get("contact_id");
-  if (!contactId) return;
+  var contactId = params.get("contact_id") || null;
+  var sessionId = "s_" + Math.random().toString(36).substr(2, 9) + "_" + Date.now();
+  var pageStart = Date.now();
 
   function send(eventType, meta) {
-    var payload = { contact_id: contactId, event_type: eventType, metadata: meta || {} };
+    meta = meta || {};
+    meta.session_id = sessionId;
+    var payload = { org_token: ORG, event_type: eventType, metadata: meta };
+    if (contactId) payload.contact_id = contactId;
     if (navigator.sendBeacon) {
       navigator.sendBeacon(ENDPOINT, JSON.stringify(payload));
     } else {
@@ -626,6 +682,12 @@ function SiteTrackingScript() {
 
   // Page visit
   send("page_visit", { url: location.href, page_title: document.title, referrer: document.referrer });
+
+  // Time on page (sent on unload)
+  window.addEventListener("beforeunload", function() {
+    var duration = Date.now() - pageStart;
+    send("page_visit", { url: location.href, time_on_page: duration, page_title: document.title });
+  });
 
   // Scroll depth
   var maxScroll = 0;
@@ -645,7 +707,13 @@ function SiteTrackingScript() {
   document.addEventListener("click", function(e) {
     var el = e.target.closest("[data-track-cta]");
     if (el) {
-      send("cta_click", { cta_id: el.getAttribute("data-track-cta"), cta_text: (el.textContent || "").trim().substring(0, 100), url: location.href });
+      send("cta_click", {
+        cta_id: el.getAttribute("data-track-cta"),
+        cta_text: (el.textContent || "").trim().substring(0, 100),
+        url: location.href,
+        href: el.href || null,
+        css_class: el.className ? el.className.substring(0, 200) : null
+      });
     }
   });
 })();
@@ -657,44 +725,100 @@ function SiteTrackingScript() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  if (isLoading) {
+    return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
+  }
+
   return (
-    <Card className="border border-border shadow-none">
-      <CardHeader>
-        <CardTitle className="font-display text-lg flex items-center gap-2">
-          <MousePointerClick className="h-5 w-5" />
-          Script de Tracking do Site
-        </CardTitle>
-        <CardDescription>
-          Cole este script no seu site para rastrear visitas, scroll e cliques em CTAs dos leads que chegam via campanhas.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="relative">
-          <pre className="rounded-lg bg-muted/50 border border-border p-4 text-xs font-mono overflow-x-auto max-h-64 whitespace-pre-wrap">
-            {script}
-          </pre>
+    <div className="space-y-4">
+      <Card className="border border-border shadow-none">
+        <CardHeader>
+          <CardTitle className="font-display text-lg flex items-center gap-2">
+            <MousePointerClick className="h-5 w-5" />
+            Tracking Web
+          </CardTitle>
+          <CardDescription>
+            Configure o rastreamento comportamental do seu site para capturar visitas, scroll e cliques dos leads.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="space-y-2">
+            <Label>URL principal do site</Label>
+            <Input
+              value={siteUrl}
+              onChange={(e) => setSiteUrl(e.target.value)}
+              placeholder="https://seusite.com.br"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>ID do Google Tag Manager (opcional)</Label>
+            <Input
+              value={gtmId}
+              onChange={(e) => setGtmId(e.target.value)}
+              placeholder="GTM-XXXXXXX"
+            />
+            <p className="text-xs text-muted-foreground">Se preferir instalar via GTM em vez de colar diretamente no HTML.</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Token da organização</Label>
+            <div className="rounded-md bg-muted/50 border border-border p-3">
+              <code className="text-xs font-mono text-foreground break-all">{orgToken}</code>
+            </div>
+            <p className="text-xs text-muted-foreground">Identificador único usado para autenticar os eventos do seu script.</p>
+          </div>
+
           <Button
-            variant="outline"
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending}
             size="sm"
-            className="absolute top-2 right-2"
-            onClick={handleCopy}
           >
-            {copied ? "Copiado!" : "Copiar"}
+            {saveMutation.isPending ? "Salvando..." : "Salvar configurações"}
           </Button>
-        </div>
-        <div className="space-y-2 text-xs text-muted-foreground">
-          <p><strong>Como funciona:</strong></p>
-          <ul className="list-disc pl-4 space-y-1">
-            <li>O script detecta o parâmetro <code className="bg-muted px-1 rounded">contact_id</code> na URL (injetado automaticamente pelo sistema de campanhas)</li>
-            <li>Registra <strong>page_visit</strong> ao carregar a página</li>
-            <li>Registra <strong>scroll_depth</strong> em 25%, 50%, 75% e 100%</li>
-            <li>Registra <strong>cta_click</strong> ao clicar em elementos com <code className="bg-muted px-1 rounded">data-track-cta="nome"</code></li>
-          </ul>
-          <p className="mt-2"><strong>Exemplo de CTA:</strong></p>
-          <code className="block bg-muted px-2 py-1 rounded">&lt;button data-track-cta="hero-demo"&gt;Agendar Demo&lt;/button&gt;</code>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+
+      {/* Script */}
+      <Card className="border border-border shadow-none">
+        <CardHeader>
+          <CardTitle className="font-display text-lg flex items-center gap-2">
+            <MousePointerClick className="h-5 w-5" />
+            Script de Tracking
+          </CardTitle>
+          <CardDescription>
+            Copie e cole este script no seu site para iniciar o rastreamento.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="relative">
+            <pre className="rounded-lg bg-muted/50 border border-border p-4 text-xs font-mono overflow-x-auto max-h-64 whitespace-pre-wrap">
+              {script}
+            </pre>
+            <Button
+              variant="outline"
+              size="sm"
+              className="absolute top-2 right-2"
+              onClick={handleCopy}
+            >
+              {copied ? "Copiado!" : "Copiar"}
+            </Button>
+          </div>
+          <div className="space-y-2 text-xs text-muted-foreground">
+            <p><strong>Como funciona:</strong></p>
+            <ul className="list-disc pl-4 space-y-1">
+              <li>Usa o <code className="bg-muted px-1 rounded">org_token</code> para identificar sua conta</li>
+              <li>Detecta <code className="bg-muted px-1 rounded">contact_id</code> na URL (injetado pelas campanhas)</li>
+              <li>Gera um <code className="bg-muted px-1 rounded">session_id</code> único por visita</li>
+              <li>Registra <strong>page_visit</strong> com tempo na página</li>
+              <li>Registra <strong>scroll_depth</strong> em 25%, 50%, 75% e 100%</li>
+              <li>Registra <strong>cta_click</strong> em elementos com <code className="bg-muted px-1 rounded">data-track-cta="nome"</code></li>
+            </ul>
+            <p className="mt-2"><strong>Exemplo de CTA:</strong></p>
+            <code className="block bg-muted px-2 py-1 rounded">&lt;button data-track-cta="hero-demo"&gt;Agendar Demo&lt;/button&gt;</code>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

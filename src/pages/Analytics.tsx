@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Building2, Users, TrendingUp, Target, Download, Send, Reply, Mail, CheckCircle, XCircle, Filter } from "lucide-react";
+import { Building2, Users, TrendingUp, Target, Download, Send, Reply, Mail, CheckCircle, XCircle, Filter, Globe, Eye, MousePointerClick, BarChart3, Clock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,8 +27,9 @@ import {
 } from "@/hooks/useRealMetrics";
 import { useEventLog, useEventTotals, useEventChartData } from "@/hooks/useEventLog";
 import { useCampaigns } from "@/hooks/useCampaigns";
+import { useProspectLists } from "@/hooks/useProspectLists";
+import { useWebTrackingMetrics, useWebTrackingChartData } from "@/hooks/useWebTracking";
 import { Skeleton } from "@/components/ui/skeleton";
-
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -53,12 +54,14 @@ const Analytics = () => {
   const [eventPeriod, setEventPeriod] = useState("7d");
   const [eventCampaign, setEventCampaign] = useState("all");
   const [eventType, setEventType] = useState("all");
-  
+  const [webPeriod, setWebPeriod] = useState("7d");
+  const [webListId, setWebListId] = useState("all");
 
   const { data: metrics, isLoading: metricsLoading } = useRealMetrics();
   const { data: monthlyData, isLoading: monthlyLoading } = useMonthlyChartData();
   const { data: industryData, isLoading: industryLoading } = useIndustryChartData();
   const { data: campaigns } = useCampaigns();
+  const { lists } = useProspectLists();
 
   const eventFilters = {
     period: eventPeriod,
@@ -68,6 +71,11 @@ const Analytics = () => {
   const { data: eventLog, isLoading: eventsLoading } = useEventLog(eventFilters);
   const { data: eventTotals, isLoading: totalsLoading } = useEventTotals(eventPeriod);
   const { data: eventChartData, isLoading: eventChartLoading } = useEventChartData(eventPeriod);
+
+  // Web tracking
+  const webFilters = { period: webPeriod, listId: webListId !== "all" ? webListId : undefined };
+  const { data: webMetrics, isLoading: webMetricsLoading } = useWebTrackingMetrics(webFilters);
+  const { data: webChartData, isLoading: webChartLoading } = useWebTrackingChartData(webPeriod);
 
   const kpis = [
     { label: "Empresas salvas", value: metrics?.companiesSaved ?? 0, icon: Building2 },
@@ -130,11 +138,15 @@ const Analytics = () => {
         ))}
       </div>
 
-      {/* Tabs: Overview + Events */}
+      {/* Tabs: Overview + Events + Web Tracking */}
       <Tabs defaultValue="overview" className="space-y-6">
         <TabsList>
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
           <TabsTrigger value="events">Eventos</TabsTrigger>
+          <TabsTrigger value="web-tracking" className="gap-1.5">
+            <Globe className="h-3.5 w-3.5" />
+            Tracking Web
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -254,9 +266,7 @@ const Analytics = () => {
           <div className="flex flex-wrap items-center gap-3">
             <Filter className="h-4 w-4 text-muted-foreground" />
             <Select value={eventPeriod} onValueChange={setEventPeriod}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="7d">Últimos 7 dias</SelectItem>
                 <SelectItem value="15d">Últimos 15 dias</SelectItem>
@@ -264,9 +274,7 @@ const Analytics = () => {
               </SelectContent>
             </Select>
             <Select value={eventCampaign} onValueChange={setEventCampaign}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Campanha" />
-              </SelectTrigger>
+              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Campanha" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas campanhas</SelectItem>
                 {(campaigns || []).map(c => (
@@ -275,9 +283,7 @@ const Analytics = () => {
               </SelectContent>
             </Select>
             <Select value={eventType} onValueChange={setEventType}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="Tipo" />
-              </SelectTrigger>
+              <SelectTrigger className="w-[140px]"><SelectValue placeholder="Tipo" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos tipos</SelectItem>
                 <SelectItem value="sent">Enviado</SelectItem>
@@ -343,9 +349,197 @@ const Analytics = () => {
             </CardContent>
           </Card>
         </TabsContent>
-      </Tabs>
 
-      
+        {/* Web Tracking Tab */}
+        <TabsContent value="web-tracking" className="space-y-6">
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-3">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <Select value={webPeriod} onValueChange={setWebPeriod}>
+              <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7d">Últimos 7 dias</SelectItem>
+                <SelectItem value="30d">Últimos 30 dias</SelectItem>
+                <SelectItem value="90d">Últimos 90 dias</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={webListId} onValueChange={setWebListId}>
+              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Lista" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as listas</SelectItem>
+                {(lists || []).map((l: any) => (
+                  <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* KPI Cards */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Card className="border border-border shadow-none">
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Total de visitas</span>
+                  <Eye className="h-4 w-4 text-muted-foreground/50" />
+                </div>
+                <div className="mt-2">
+                  {webMetricsLoading ? <Skeleton className="h-8 w-16" /> : (
+                    <span className="font-display text-2xl font-bold text-foreground">{webMetrics?.totalVisits ?? 0}</span>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border border-border shadow-none">
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Sessões</span>
+                  <Globe className="h-4 w-4 text-muted-foreground/50" />
+                </div>
+                <div className="mt-2">
+                  {webMetricsLoading ? <Skeleton className="h-8 w-16" /> : (
+                    <span className="font-display text-2xl font-bold text-foreground">{webMetrics?.totalSessions ?? 0}</span>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border border-border shadow-none">
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Tempo médio (seg)</span>
+                  <Clock className="h-4 w-4 text-muted-foreground/50" />
+                </div>
+                <div className="mt-2">
+                  {webMetricsLoading ? <Skeleton className="h-8 w-16" /> : (
+                    <span className="font-display text-2xl font-bold text-foreground">{webMetrics?.avgTimeOnPage ?? 0}s</span>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border border-border shadow-none">
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Scroll médio</span>
+                  <BarChart3 className="h-4 w-4 text-muted-foreground/50" />
+                </div>
+                <div className="mt-2">
+                  {webMetricsLoading ? <Skeleton className="h-8 w-16" /> : (
+                    <span className="font-display text-2xl font-bold text-foreground">{webMetrics?.avgScrollDepth ?? 0}%</span>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Chart */}
+          <Card className="border border-border shadow-none">
+            <CardHeader>
+              <CardTitle className="font-display text-base font-semibold">Eventos web por dia</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {webChartLoading ? (
+                <Skeleton className="h-[200px] w-full" />
+              ) : webChartData && webChartData.some(d => d.eventos > 0) ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={webChartData}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis dataKey="date" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} interval="preserveStartEnd" />
+                    <YAxis allowDecimals={false} className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
+                    <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "var(--radius)", color: "hsl(var(--foreground))" }} />
+                    <Line type="monotone" dataKey="eventos" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
+                  Nenhum evento de tracking no período.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            {/* Top Pages */}
+            <Card className="border border-border shadow-none">
+              <CardHeader>
+                <CardTitle className="font-display text-base font-semibold">Páginas mais visitadas</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {webMetricsLoading ? (
+                  <Skeleton className="h-[200px] w-full" />
+                ) : webMetrics?.topPages && webMetrics.topPages.length > 0 ? (
+                  <div className="space-y-2">
+                    {webMetrics.topPages.map((p, i) => (
+                      <div key={i} className="flex items-center justify-between text-sm">
+                        <span className="text-foreground truncate max-w-[250px]" title={p.url}>{p.url}</span>
+                        <Badge variant="secondary">{p.count}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Nenhuma visita registrada.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Top CTAs */}
+            <Card className="border border-border shadow-none">
+              <CardHeader>
+                <CardTitle className="font-display text-base font-semibold">CTAs mais clicados</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {webMetricsLoading ? (
+                  <Skeleton className="h-[200px] w-full" />
+                ) : webMetrics?.topCTAs && webMetrics.topCTAs.length > 0 ? (
+                  <div className="space-y-2">
+                    {webMetrics.topCTAs.map((c, i) => (
+                      <div key={i} className="flex items-center justify-between text-sm">
+                        <span className="text-foreground truncate max-w-[250px]">{c.ctaId}</span>
+                        <Badge variant="secondary">{c.count}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Nenhum clique em CTA registrado.</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Top Engaged Contacts */}
+          <Card className="border border-border shadow-none">
+            <CardHeader>
+              <CardTitle className="font-display text-base font-semibold">Contatos mais engajados</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {webMetricsLoading ? (
+                <Skeleton className="h-[200px] w-full" />
+              ) : webMetrics?.topContacts && webMetrics.topContacts.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Contato</TableHead>
+                      <TableHead>Empresa</TableHead>
+                      <TableHead className="text-right">Eventos</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {webMetrics.topContacts.map((c) => (
+                      <TableRow key={c.contactId}>
+                        <TableCell className="text-sm font-medium text-foreground">{c.name}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{c.company || "—"}</TableCell>
+                        <TableCell className="text-right">
+                          <Badge variant="secondary">{c.eventCount}</Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <p className="text-sm text-muted-foreground">Nenhum contato com atividade web.</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
