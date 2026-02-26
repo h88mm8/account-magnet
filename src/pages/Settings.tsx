@@ -228,6 +228,9 @@ const Settings = () => {
         {/* Email settings */}
         <TabsContent value="email">
           <div className="space-y-4">
+            {/* Resend Settings */}
+            <ResendSettingsCard />
+
             {/* Signature */}
             <Card className="border border-border shadow-none">
               <CardHeader>
@@ -690,6 +693,139 @@ function SiteTrackingScript() {
           <p className="mt-2"><strong>Exemplo de CTA:</strong></p>
           <code className="block bg-muted px-2 py-1 rounded">&lt;button data-track-cta="hero-demo"&gt;Agendar Demo&lt;/button&gt;</code>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ResendSettingsCard() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: resendSettings, isLoading } = useQuery({
+    queryKey: ["resend-settings"],
+    queryFn: async () => {
+      if (!user) return null;
+      const { data } = await supabase
+        .from("resend_settings" as any)
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+      return data as any;
+    },
+    enabled: !!user,
+  });
+
+  const [apiKey, setApiKey] = useState("");
+  const [senderDomain, setSenderDomain] = useState("");
+  const [senderName, setSenderName] = useState("Minha Empresa");
+  const [senderEmail, setSenderEmail] = useState("");
+
+  useEffect(() => {
+    if (resendSettings) {
+      setApiKey(resendSettings.resend_api_key_encrypted ? "••••••••••••••••" : "");
+      setSenderDomain(resendSettings.sender_domain || "");
+      setSenderName(resendSettings.sender_name || "Minha Empresa");
+      setSenderEmail(resendSettings.sender_email || "");
+    }
+  }, [resendSettings]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!user) throw new Error("Not authenticated");
+      // Save via edge function to keep API key secure
+      const { data, error } = await supabase.functions.invoke("save-resend-settings", {
+        body: {
+          resend_api_key: apiKey.includes("••••") ? undefined : apiKey,
+          sender_domain: senderDomain || null,
+          sender_name: senderName || "Minha Empresa",
+          sender_email: senderEmail || null,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["resend-settings"] });
+      toast({ title: "Configurações do Resend salvas!" });
+    },
+    onError: (e: any) => {
+      toast({ title: "Erro ao salvar", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const isConfigured = resendSettings?.resend_api_key_encrypted && resendSettings?.sender_email;
+
+  return (
+    <Card className="border border-border shadow-none">
+      <CardHeader>
+        <CardTitle className="font-display text-lg flex items-center gap-2">
+          <Mail className="h-5 w-5" />
+          Email (Resend)
+        </CardTitle>
+        <CardDescription>
+          Configure a API do Resend para envio de emails em campanhas e workflows. A API Key é armazenada de forma segura no backend.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isConfigured && (
+          <Badge variant="outline" className="border-green-300 text-green-700">
+            ✓ Configurado
+          </Badge>
+        )}
+        <div className="space-y-2">
+          <Label>API Key do Resend</Label>
+          <Input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          />
+          <p className="text-xs text-muted-foreground">
+            Obtenha em{" "}
+            <a href="https://resend.com/api-keys" target="_blank" rel="noopener noreferrer" className="underline">
+              resend.com/api-keys
+            </a>. A chave é armazenada de forma segura e nunca exposta no frontend.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Label>Domínio de envio verificado</Label>
+          <Input
+            value={senderDomain}
+            onChange={(e) => setSenderDomain(e.target.value)}
+            placeholder="suaempresa.com"
+          />
+          <p className="text-xs text-muted-foreground">
+            Domínio verificado no Resend para envio autenticado.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Nome do remetente</Label>
+            <Input
+              value={senderName}
+              onChange={(e) => setSenderName(e.target.value)}
+              placeholder="Seu Nome ou Empresa"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Email do remetente</Label>
+            <Input
+              type="email"
+              value={senderEmail}
+              onChange={(e) => setSenderEmail(e.target.value)}
+              placeholder="contato@suaempresa.com"
+            />
+          </div>
+        </div>
+        <Button
+          onClick={() => saveMutation.mutate()}
+          disabled={saveMutation.isPending}
+          size="sm"
+        >
+          {saveMutation.isPending ? "Salvando..." : "Salvar configurações do Resend"}
+        </Button>
       </CardContent>
     </Card>
   );
