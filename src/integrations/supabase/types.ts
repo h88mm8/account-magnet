@@ -1047,6 +1047,36 @@ export type Database = {
         }
         Relationships: []
       }
+      web_tracking_settings: {
+        Row: {
+          created_at: string
+          gtm_id: string | null
+          id: string
+          org_token: string
+          site_url: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          gtm_id?: string | null
+          id?: string
+          org_token?: string
+          site_url?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          gtm_id?: string | null
+          id?: string
+          org_token?: string
+          site_url?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       whatsapp_connections: {
         Row: {
           connected_at: string | null

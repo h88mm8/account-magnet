@@ -33,6 +33,12 @@ function getConfigSummary(type: string, config: Record<string, any>): string {
     case "condition": {
       const ch = config.channel || "email";
       const evt = config.event_type || "replied";
+      if (ch === "site") {
+        if (evt === "page_visit" && config.url_contains) return `Web: visitou ${config.url_contains}`;
+        if (evt === "scroll_depth") return `Web: scroll ≥ ${config.min_scroll || 50}%`;
+        if (evt === "cta_click") return `Web: CTA ${config.cta_id || "?"}`;
+        return `Web: ${evt}`;
+      }
       return `${ch} → ${evt}?`;
     }
     case "action":

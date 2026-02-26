@@ -138,31 +138,88 @@ export function NodeConfigPanel({ nodeId, nodeType, config, onUpdate, onClose }:
         <>
           <div>
             <Label className="text-xs">Canal</Label>
-            <Select value={local.channel || "email"} onValueChange={(v) => update("channel", v)}>
+            <Select value={local.channel || "email"} onValueChange={(v) => {
+              const resetType = v === "site" ? "page_visit" : "replied";
+              const next = { ...local, channel: v, event_type: resetType };
+              setLocal(next);
+              onUpdate(next);
+            }}>
               <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="email">Email</SelectItem>
                 <SelectItem value="linkedin">LinkedIn</SelectItem>
                 <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                <SelectItem value="site">Tracking Web</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <Label className="text-xs">Evento</Label>
-            <Select value={local.event_type || "replied"} onValueChange={(v) => update("event_type", v)}>
-              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="replied">Respondeu?</SelectItem>
-                <SelectItem value="delivered">Entregue?</SelectItem>
-                <SelectItem value="accepted">Aceitou conexão?</SelectItem>
-                <SelectItem value="sent">Enviado?</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Período de verificação (horas)</Label>
-            <Input type="number" min={1} value={local.lookback_hours || 48} onChange={(e) => update("lookback_hours", parseInt(e.target.value) || 48)} className="mt-1" />
-          </div>
+
+          {local.channel !== "site" ? (
+            <>
+              <div>
+                <Label className="text-xs">Evento</Label>
+                <Select value={local.event_type || "replied"} onValueChange={(v) => update("event_type", v)}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="replied">Respondeu?</SelectItem>
+                    <SelectItem value="delivered">Entregue?</SelectItem>
+                    <SelectItem value="accepted">Aceitou conexão?</SelectItem>
+                    <SelectItem value="sent">Enviado?</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Período de verificação (horas)</Label>
+                <Input type="number" min={1} value={local.lookback_hours || 48} onChange={(e) => update("lookback_hours", parseInt(e.target.value) || 48)} className="mt-1" />
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <Label className="text-xs">Condição Web</Label>
+                <Select value={local.event_type || "page_visit"} onValueChange={(v) => update("event_type", v)}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="page_visit">Visitou página</SelectItem>
+                    <SelectItem value="scroll_depth">Scroll acima de X%</SelectItem>
+                    <SelectItem value="cta_click">Clicou em CTA</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {local.event_type === "page_visit" && (
+                <>
+                  <div>
+                    <Label className="text-xs">URL contém</Label>
+                    <Input value={local.url_contains || ""} onChange={(e) => update("url_contains", e.target.value)} placeholder="/pricing" className="mt-1" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Mínimo de visitas</Label>
+                    <Input type="number" min={1} value={local.min_count || 1} onChange={(e) => update("min_count", parseInt(e.target.value) || 1)} className="mt-1" />
+                  </div>
+                </>
+              )}
+
+              {local.event_type === "scroll_depth" && (
+                <div>
+                  <Label className="text-xs">Scroll mínimo (%)</Label>
+                  <Input type="number" min={1} max={100} value={local.min_scroll || 50} onChange={(e) => update("min_scroll", parseInt(e.target.value) || 50)} className="mt-1" />
+                </div>
+              )}
+
+              {local.event_type === "cta_click" && (
+                <div>
+                  <Label className="text-xs">ID do CTA</Label>
+                  <Input value={local.cta_id || ""} onChange={(e) => update("cta_id", e.target.value)} placeholder="hero-demo" className="mt-1" />
+                </div>
+              )}
+
+              <div>
+                <Label className="text-xs">Período de verificação (horas)</Label>
+                <Input type="number" min={1} value={local.lookback_hours || 48} onChange={(e) => update("lookback_hours", parseInt(e.target.value) || 48)} className="mt-1" />
+              </div>
+            </>
+          )}
         </>
       )}
 

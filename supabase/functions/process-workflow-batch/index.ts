@@ -405,28 +405,65 @@ async function processConditionNode(
   contact: any
 ): Promise<{ nextNodeId: string | null; delay: number }> {
   const config = node.config || {};
-  // config: { channel: "email"|"linkedin"|"whatsapp", event_type: "replied"|"delivered"|"accepted", lookback_hours: 48 }
   const channel = config.channel || "email";
   const eventType = config.event_type || "replied";
   const lookbackHours = config.lookback_hours || 48;
 
   const since = new Date(Date.now() - lookbackHours * 3600000).toISOString();
 
-  const { count } = await supabase
-    .from("events")
-    .select("id", { count: "exact", head: true })
-    .eq("contact_id", execution.contact_id)
-    .eq("channel", channel)
-    .eq("event_type", eventType)
-    .gte("created_at", since);
+  let conditionMet = false;
 
-  const conditionMet = (count || 0) > 0;
+  if (channel === "site") {
+    // Web tracking conditions
+    let query = supabase
+      .from("events")
+      .select("id, metadata", { count: "exact" })
+      .eq("contact_id", execution.contact_id)
+      .eq("channel", "site")
+      .eq("event_type", eventType)
+      .gte("created_at", since);
+
+    const { data: siteEvents, count } = await query;
+
+    if (eventType === "page_visit" && config.url_contains) {
+      // Filter by URL pattern
+      const matchingEvents = (siteEvents || []).filter((e: any) => {
+        const url = e.metadata?.url || "";
+        return url.includes(config.url_contains);
+      });
+      const minCount = config.min_count || 1;
+      conditionMet = matchingEvents.length >= minCount;
+    } else if (eventType === "scroll_depth") {
+      const minScroll = config.min_scroll || 50;
+      const matching = (siteEvents || []).filter((e: any) => {
+        return (e.metadata?.scroll_percent || 0) >= minScroll;
+      });
+      conditionMet = matching.length > 0;
+    } else if (eventType === "cta_click" && config.cta_id) {
+      const matching = (siteEvents || []).filter((e: any) => {
+        return e.metadata?.cta_id === config.cta_id;
+      });
+      conditionMet = matching.length > 0;
+    } else {
+      conditionMet = (count || 0) > 0;
+    }
+  } else {
+    // Standard channel conditions
+    const { count } = await supabase
+      .from("events")
+      .select("id", { count: "exact", head: true })
+      .eq("contact_id", execution.contact_id)
+      .eq("channel", channel)
+      .eq("event_type", eventType)
+      .gte("created_at", since);
+
+    conditionMet = (count || 0) > 0;
+  }
 
   await logExecution(supabase, execution.id, node.id, "condition_eval", {
     channel,
     event_type: eventType,
     result: conditionMet,
-    events_found: count || 0,
   });
 
   return {
