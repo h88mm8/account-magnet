@@ -36,12 +36,17 @@ export function AppSidebar() {
   return (
     <Sidebar className="border-r border-border">
       <div className="flex items-center gap-2.5 px-5 py-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-          <Search className="h-4 w-4 text-primary-foreground" />
+        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
+          {/* 3 linhas convergindo = Email + LinkedIn + WhatsApp unificados */}
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3 4L9 9L15 4" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
+            <path d="M3 9L9 9" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
+            <path d="M3 14L9 9L15 14" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
+          </svg>
         </div>
         <div>
-          <span className="font-display text-base font-bold tracking-tight text-foreground">ELEV</span>
-          <span className="font-display text-base font-light tracking-tight text-muted-foreground"> Discover</span>
+          <span className="font-display text-sm font-bold tracking-tight text-foreground">ELEV</span>
+          <span className="font-display text-sm font-semibold tracking-tight text-primary"> SALES</span>
         </div>
       </div>
 

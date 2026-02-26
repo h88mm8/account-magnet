@@ -19,7 +19,7 @@ const STATUS_CONFIG: Record<string, { label: string; icon: typeof Send; color: s
   sent: { label: "Enviado", icon: Send, color: "text-blue-500" },
   delivered: { label: "Entregue", icon: CheckCircle, color: "text-green-500" },
   replied: { label: "Respondido", icon: Reply, color: "text-emerald-500" },
-  accepted: { label: "Aceito", icon: CheckCircle, color: "text-teal-500" },
+  accepted: { label: "Aceito", icon: CheckCircle, color: "text-blue-500" },
   failed: { label: "Falha", icon: XCircle, color: "text-red-500" },
   invalid: { label: "Inválido", icon: XCircle, color: "text-orange-500" },
 };

@@ -9,19 +9,19 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 
-/* ── Autonomy-inspired palette ── */
+/* ── ELEV SALES palette — azul primário #1E3A8A / ação #1D4ED8 ── */
 const C = {
-  bg: "#0B0B0F",
-  surface: "#111116",
-  surfaceAlt: "#161619",
-  border: "#1E1E24",
-  borderLight: "#2A2A32",
-  text: "#E8E6E1",
-  textMuted: "#8A8A96",
-  textDim: "#555560",
-  accent: "#2DD4BF", // teal/cyan from Autonomy
-  accentDim: "rgba(45,212,191,0.12)",
-  accentBorder: "rgba(45,212,191,0.3)",
+  bg: "#07091A",           // quase-preto azulado
+  surface: "#0D1226",      // card dark
+  surfaceAlt: "#111830",   // tabs/input bg
+  border: "#1A2340",       // bordas sutis
+  borderLight: "#243058",  // bordas levemente visíveis
+  text: "#F0F7FF",         // off-white azulado
+  textMuted: "#8A9CC2",    // azul acinzentado
+  textDim: "#4A5A7A",      // texto muito apagado
+  accent: "#3B82F6",       // azul ação
+  accentDim: "rgba(59,130,246,0.12)",
+  accentBorder: "rgba(59,130,246,0.3)",
 };
 
 export default function Auth() {
@@ -73,10 +73,10 @@ export default function Auth() {
   };
 
   const steps = [
-    { icon: Building2, num: "01", title: "Busca", desc: "Empresas e contatos com filtros por cargo, setor, localização e porte." },
-    { icon: Users, num: "02", title: "Organização", desc: "Listas segmentadas por ICP, região, campanha ou critérios internos." },
-    { icon: Send, num: "03", title: "Campanhas", desc: "WhatsApp, LinkedIn e Email executados a partir das listas." },
-    { icon: Bell, num: "04", title: "Monitoramento", desc: "Alertas em tempo real quando o lead acessa e interage com sua página." },
+    { icon: Search, num: "01", title: "Busca", desc: "Encontre leads por cargo, setor, localização e porte — tudo com filtros precisos." },
+    { icon: Users, num: "02", title: "Enriquecimento", desc: "Email, telefone e LinkedIn enriquecidos automaticamente. Sem planilha, sem copiar e colar." },
+    { icon: Send, num: "03", title: "Campanhas", desc: "Email, LinkedIn e WhatsApp no mesmo fluxo. Uma campanha, três canais, zero troca de tela." },
+    { icon: Building2, num: "04", title: "Pay-as-you-go", desc: "Sem assinatura mensal. Compra créditos, usa quando quiser. Nunca expiram." },
   ];
 
   /* ── Shared styles ── */
@@ -84,7 +84,7 @@ export default function Auth() {
   const inputClass = `rounded-none pl-9 border-[${C.border}] focus:border-[${C.accent}] focus:ring-0`;
 
   return (
-    <div className="min-h-screen" style={{ background: C.bg, color: C.text, fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="min-h-screen" style={{ background: C.bg, color: C.text, fontFamily: "'Inter', sans-serif" }}>
       {/* ═══ Header ═══ */}
       <header
         className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 md:px-10"
@@ -92,9 +92,9 @@ export default function Auth() {
       >
         <span
           className="text-base font-black uppercase tracking-[0.15em]"
-          style={{ fontFamily: "'Plus Jakarta Sans', monospace", color: C.accent }}
+          style={{ fontFamily: "'Space Grotesk', sans-serif", color: C.accent }}
         >
-          ELEV<span style={{ color: C.text }}>_</span>
+          ELEV<span style={{ color: C.accent }}>.</span>SALES
         </span>
         <nav className="hidden md:flex items-center gap-8">
           {[
@@ -104,7 +104,7 @@ export default function Auth() {
             <button
               key={item.label}
               onClick={() => scrollTo(item.ref)}
-              className="text-xs font-medium uppercase tracking-[0.2em] transition-colors hover:text-[#2DD4BF]"
+              className="text-xs font-medium uppercase tracking-[0.2em] transition-colors hover:text-[#3B82F6]"
               style={{ color: C.textMuted }}
             >
               {item.label}
@@ -113,10 +113,10 @@ export default function Auth() {
         </nav>
         <button
           onClick={() => scrollTo(loginRef)}
-          className="px-5 py-2 text-[10px] font-bold uppercase tracking-[0.2em] transition-colors hover:bg-[#2DD4BF] hover:text-[#0B0B0F]"
+          className="px-5 py-2 text-[10px] font-bold uppercase tracking-[0.2em] transition-colors hover:bg-[#3B82F6] hover:text-[#07091A]"
           style={{ border: `1px solid ${C.accent}`, color: C.accent }}
         >
-          Falar com a ELEV
+          Criar conta grátis
         </button>
       </header>
 
@@ -138,16 +138,16 @@ export default function Auth() {
             className="mb-6 inline-block px-4 py-1.5 text-[10px] font-bold uppercase tracking-[0.35em]"
             style={{ color: C.textMuted, border: `1px solid ${C.borderLight}` }}
           >
-            ELEV Discover
+            ELEV SALES
           </p>
           <h1
             className="mx-auto max-w-3xl text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-5xl md:text-6xl lg:text-7xl"
-            style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", color: C.text }}
+            style={{ fontFamily: "'Space Grotesk', sans-serif", color: C.text }}
           >
-            Busque, enriqueça e prospecte em um só lugar.
+            O único sistema que busca, enriquece e prospecta pelo mesmo lugar.
           </h1>
           <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed sm:text-lg" style={{ color: C.textMuted }}>
-            Email, LinkedIn e WhatsApp integrados. Pague apenas pelo que usar. Créditos que não expiram.
+            Email, LinkedIn e WhatsApp num único fluxo. Sem assinatura mensal. Sem crédito que expira.
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <button
@@ -155,7 +155,7 @@ export default function Auth() {
               className="px-8 py-3 text-xs font-bold uppercase tracking-[0.2em] transition-all hover:brightness-110"
               style={{ background: C.accent, color: "#0B0B0F" }}
             >
-              Solicitar demonstração
+              Começar agora — grátis
             </button>
             <button
               onClick={() => scrollTo(flowRef)}
@@ -164,7 +164,7 @@ export default function Auth() {
               onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.color = C.accent; }}
               onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.borderLight; e.currentTarget.style.color = C.textMuted; }}
             >
-              Conhecer o fluxo <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+              Ver como funciona <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </button>
           </div>
         </div>
@@ -173,23 +173,23 @@ export default function Auth() {
       {/* ═══ Problema ═══ */}
       <section className="px-4 py-28" style={sectionBorder}>
         <div className="mx-auto max-w-2xl text-center">
-          <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.35em]" style={{ color: C.accent }}>01 — Tese</p>
-          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-            Estrutura vence improviso.
+          <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.35em]" style={{ color: C.accent }}>01 — O Problema</p>
+          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+            Seu time usa 5 ferramentas pra fechar uma reunião.
           </h2>
           <p className="mt-8 text-base leading-[1.8]" style={{ color: C.textMuted }}>
-            Hoje a prospecção é fragmentada. Você busca em um lugar, dispara em outro e não sabe quando o lead realmente está interessado. Isso gera abordagem fora de hora.
+            Uma para buscar leads. Outra para enriquecer. Outra para email. Outra para LinkedIn. E o WhatsApp ainda é manual, fora de qualquer fluxo. Cada uma cobra mensalidade — mesmo nos meses que você não prospecta.
           </p>
-          <p className="mt-5 text-base font-medium" style={{ color: C.text }}>ELEV Discover organiza tudo em um único fluxo.</p>
+          <p className="mt-5 text-base font-medium" style={{ color: C.text }}>A ELEV SALES unifica tudo isso num só lugar. Você paga só os créditos que usar.</p>
         </div>
       </section>
 
-      {/* ═══ O Fluxo ═══ */}
+      {/* ═══ Como funciona ═══ */}
       <section ref={flowRef} className="px-4 py-28" style={sectionBorder}>
         <div className="mx-auto max-w-5xl">
-          <p className="mb-4 text-center text-[10px] font-bold uppercase tracking-[0.35em]" style={{ color: C.accent }}>02 — Arquitetura</p>
-          <h2 className="mb-16 text-center text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-            O Fluxo
+          <p className="mb-4 text-center text-[10px] font-bold uppercase tracking-[0.35em]" style={{ color: C.accent }}>02 — Como funciona</p>
+          <h2 className="mb-16 text-center text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+            Como funciona
           </h2>
           <div className="grid gap-px sm:grid-cols-2" style={{ background: C.border }}>
             {steps.map((s) => (
@@ -205,7 +205,7 @@ export default function Auth() {
           </div>
           {/* Timeline strip */}
           <div className="mt-12 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: C.textDim }}>
-            {["Encontrar", "Organizar", "Executar", "Agir"].map((label, i) => (
+            {["Buscar", "Enriquecer", "Campanhas", "Resultado"].map((label, i) => (
               <span key={label} className="flex items-center gap-2">
                 <span className="px-3 py-1.5" style={{ background: C.surface, border: `1px solid ${C.border}`, color: C.accent }}>
                   {label}
@@ -221,28 +221,28 @@ export default function Auth() {
       <section className="px-4 py-28" style={sectionBorder}>
         <div className="mx-auto max-w-4xl md:grid md:grid-cols-[1fr_1px_1fr] md:gap-0">
           <div className="p-8 md:p-10">
-            <h3 className="mb-5 text-lg font-bold" style={{ color: C.text }}>Ferramentas separadas</h3>
+            <h3 className="mb-5 text-lg font-bold" style={{ color: C.text }}>Stack fragmentado</h3>
              <ul className="space-y-3 text-sm leading-relaxed" style={{ color: C.textDim }}>
-              <li>Soluções fragmentadas para cada etapa.</li>
-              <li>Ferramentas que só disparam, sem contexto.</li>
-              <li>Sem visibilidade de intenção do lead.</li>
+              <li>4–6 ferramentas separadas para prospectar.</li>
+              <li>Assinatura mensal em cada uma — parado ou não.</li>
+              <li>WhatsApp manual fora de qualquer processo.</li>
             </ul>
           </div>
           <div className="hidden md:block" style={{ background: C.border }} />
           <div className="p-8 md:p-10">
-            <h3 className="mb-5 text-lg font-bold" style={{ color: C.accent }}>ELEV Discover</h3>
+            <h3 className="mb-5 text-lg font-bold" style={{ color: C.accent }}>ELEV SALES</h3>
             <ul className="space-y-3 text-sm leading-relaxed" style={{ color: C.textMuted }}>
-              <li>Fluxo único.</li>
-              <li>Execução multicanal integrada.</li>
-              <li>Alertas em tempo real.</li>
-              <li>Abordagem no momento certo.</li>
+              <li>Busca, enriquecimento e campanhas num lugar só.</li>
+              <li>Email, LinkedIn e WhatsApp no mesmo fluxo.</li>
+              <li>Sem assinatura. Pague só os créditos que usar.</li>
+              <li>Créditos que não expiram nunca.</li>
             </ul>
           </div>
         </div>
         <p className="mx-auto mt-16 max-w-lg text-center text-xl font-semibold leading-relaxed" style={{ color: C.text }}>
-          O valor não é disparar mais.<br />
+          Do lead cru à mensagem enviada.<br />
           <span style={{ color: C.accent, borderBottom: `1px solid ${C.accentBorder}`, paddingBottom: "3px" }}>
-            É abordar quando existe intenção.
+            Sem sair da plataforma.
           </span>
         </p>
       </section>
@@ -253,7 +253,7 @@ export default function Auth() {
           <div className="mx-auto mb-5 flex h-10 w-10 items-center justify-center" style={{ background: C.accentDim, border: `1px solid ${C.accentBorder}` }}>
             <Shield className="h-5 w-5" style={{ color: C.accent }} />
           </div>
-          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Privacidade & LGPD</h2>
+          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Privacidade & LGPD</h2>
           <ul className="mt-8 space-y-4 text-sm text-left max-w-lg mx-auto leading-relaxed" style={{ color: C.textMuted }}>
             <li>• Uso de fontes públicas com base legal de legítimo interesse.</li>
             <li>• WhatsApp não importa histórico anterior; apenas ações feitas na plataforma são rastreadas.</li>
@@ -265,13 +265,13 @@ export default function Auth() {
       {/* ═══ Final CTA + Login ═══ */}
       <section ref={loginRef} className="px-4 py-28" style={{ ...sectionBorder, background: "#08080C" }}>
         <div className="mx-auto max-w-md text-center">
-          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", color: C.text }}>
-            Mais organização. Mais controle.<br />Mais conversas no timing certo.
+          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl" style={{ fontFamily: "'Space Grotesk', sans-serif", color: C.text }}>
+            Do lead à resposta.<br />Tudo pelo mesmo lugar.
           </h2>
 
           <div className="mt-10 p-8" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
-            <h3 className="text-base font-bold tracking-wide" style={{ color: C.text }}>ELEV Discover</h3>
-            <p className="text-[10px] mt-1.5 uppercase tracking-[0.3em]" style={{ color: C.textDim }}>Agendar demonstração</p>
+            <h3 className="text-base font-bold tracking-wide" style={{ color: C.text }}>ELEV SALES</h3>
+            <p className="text-[10px] mt-1.5 uppercase tracking-[0.3em]" style={{ color: C.textDim }}>Criar conta — 50 créditos grátis</p>
 
             <Tabs defaultValue="login" className="mt-6">
               <TabsList className="grid w-full grid-cols-2 rounded-none h-10" style={{ background: C.surfaceAlt }}>
@@ -379,10 +379,10 @@ export default function Auth() {
         style={{ borderTop: `1px solid ${C.border}`, background: C.bg }}
       >
         <p className="text-[11px] tracking-wide" style={{ color: C.textDim, fontFamily: "monospace" }}>
-          © 2025 ELEV Sales. Todos os direitos reservados.
+          © 2026 ELEV SALES. Todos os direitos reservados.
         </p>
         <p className="text-[10px] font-bold uppercase tracking-[0.3em]" style={{ color: C.textDim }}>
-          Prospecção B2B integrada
+          busca · enriquece · prospecta
         </p>
       </footer>
     </div>

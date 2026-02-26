@@ -19,7 +19,7 @@ export function TopBar() {
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
             E
           </div>
-          <span className="text-sm font-medium text-foreground">ELEV</span>
+          <span className="text-sm font-semibold text-foreground">ELEV</span><span className="text-sm font-semibold text-primary"> SALES</span>
           <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
         </div>
       </div>
