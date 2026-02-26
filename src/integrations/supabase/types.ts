@@ -243,6 +243,39 @@ export type Database = {
           },
         ]
       }
+      channel_licenses: {
+        Row: {
+          channel: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          status: string
+          stripe_subscription_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          status?: string
+          stripe_subscription_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          status?: string
+          stripe_subscription_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       credit_transactions: {
         Row: {
           amount: number
@@ -1011,6 +1044,36 @@ export type Database = {
         }
         Relationships: []
       }
+      user_credits_separated: {
+        Row: {
+          created_at: string
+          email_balance: number
+          id: string
+          leads_balance: number
+          phone_balance: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email_balance?: number
+          id?: string
+          leads_balance?: number
+          phone_balance?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email_balance?: number
+          id?: string
+          leads_balance?: number
+          phone_balance?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_integrations: {
         Row: {
           connected_at: string | null
@@ -1348,6 +1411,18 @@ export type Database = {
         }
         Returns: number
       }
+      add_email_credits: {
+        Args: { p_amount: number; p_description?: string; p_user_id: string }
+        Returns: number
+      }
+      add_leads_credits: {
+        Args: { p_amount: number; p_description?: string; p_user_id: string }
+        Returns: number
+      }
+      add_phone_credits: {
+        Args: { p_amount: number; p_description?: string; p_user_id: string }
+        Returns: number
+      }
       deduct_credits: {
         Args: {
           p_amount: number
@@ -1356,6 +1431,18 @@ export type Database = {
           p_type: string
           p_user_id: string
         }
+        Returns: number
+      }
+      deduct_email_credits: {
+        Args: { p_amount: number; p_description?: string; p_user_id: string }
+        Returns: number
+      }
+      deduct_leads_credits: {
+        Args: { p_amount: number; p_description?: string; p_user_id: string }
+        Returns: number
+      }
+      deduct_phone_credits: {
+        Args: { p_amount: number; p_description?: string; p_user_id: string }
         Returns: number
       }
       owns_execution: { Args: { exec_id: string }; Returns: boolean }

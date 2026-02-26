@@ -144,10 +144,10 @@ export default function Auth() {
             className="mx-auto max-w-3xl text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-5xl md:text-6xl lg:text-7xl"
             style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", color: C.text }}
           >
-            Prospecção B2B organizada em um único lugar.
+            Busque, enriqueça e prospecte em um só lugar.
           </h1>
           <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed sm:text-lg" style={{ color: C.textMuted }}>
-            Encontre decisores, organize listas e execute campanhas por WhatsApp, LinkedIn e Email — com alertas em tempo real quando o lead demonstra interesse.
+            Email, LinkedIn e WhatsApp integrados. Pague apenas pelo que usar. Créditos que não expiram.
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <button
@@ -222,10 +222,10 @@ export default function Auth() {
         <div className="mx-auto max-w-4xl md:grid md:grid-cols-[1fr_1px_1fr] md:gap-0">
           <div className="p-8 md:p-10">
             <h3 className="mb-5 text-lg font-bold" style={{ color: C.text }}>Ferramentas separadas</h3>
-            <ul className="space-y-3 text-sm leading-relaxed" style={{ color: C.textDim }}>
-              <li>CRM organiza pipeline.</li>
-              <li>Ferramentas de email apenas disparam.</li>
-              <li>Extensões apenas buscam contatos.</li>
+             <ul className="space-y-3 text-sm leading-relaxed" style={{ color: C.textDim }}>
+              <li>Soluções fragmentadas para cada etapa.</li>
+              <li>Ferramentas que só disparam, sem contexto.</li>
+              <li>Sem visibilidade de intenção do lead.</li>
             </ul>
           </div>
           <div className="hidden md:block" style={{ background: C.border }} />
