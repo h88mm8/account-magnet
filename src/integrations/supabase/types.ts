@@ -14,6 +14,113 @@ export type Database = {
   }
   public: {
     Tables: {
+      billing_price_history: {
+        Row: {
+          billing_product_id: string
+          changed_by: string | null
+          created_at: string
+          id: string
+          new_price: number
+          new_stripe_price_id: string | null
+          old_price: number
+          old_stripe_price_id: string | null
+        }
+        Insert: {
+          billing_product_id: string
+          changed_by?: string | null
+          created_at?: string
+          id?: string
+          new_price: number
+          new_stripe_price_id?: string | null
+          old_price: number
+          old_stripe_price_id?: string | null
+        }
+        Update: {
+          billing_product_id?: string
+          changed_by?: string | null
+          created_at?: string
+          id?: string
+          new_price?: number
+          new_stripe_price_id?: string | null
+          old_price?: number
+          old_stripe_price_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_price_history_billing_product_id_fkey"
+            columns: ["billing_product_id"]
+            isOneToOne: false
+            referencedRelation: "billing_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      billing_products: {
+        Row: {
+          active: boolean
+          billing_type: string
+          created_at: string
+          currency: string
+          id: string
+          product_type: string
+          stripe_price_id: string | null
+          stripe_product_id: string | null
+          unit_price: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          billing_type?: string
+          created_at?: string
+          currency?: string
+          id?: string
+          product_type: string
+          stripe_price_id?: string | null
+          stripe_product_id?: string | null
+          unit_price?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          billing_type?: string
+          created_at?: string
+          currency?: string
+          id?: string
+          product_type?: string
+          stripe_price_id?: string | null
+          stripe_product_id?: string | null
+          unit_price?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      billing_welcome_config: {
+        Row: {
+          email_credits: number
+          id: string
+          leads_credits: number
+          phone_credits: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          email_credits?: number
+          id?: string
+          leads_credits?: number
+          phone_credits?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          email_credits?: number
+          id?: string
+          leads_credits?: number
+          phone_credits?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       campaign_leads: {
         Row: {
           accepted_at: string | null
@@ -1110,6 +1217,24 @@ export type Database = {
         }
         Relationships: []
       }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
       web_tracking_settings: {
         Row: {
           created_at: string
@@ -1445,11 +1570,18 @@ export type Database = {
         Args: { p_amount: number; p_description?: string; p_user_id: string }
         Returns: number
       }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
       owns_execution: { Args: { exec_id: string }; Returns: boolean }
       owns_workflow: { Args: { wf_id: string }; Returns: boolean }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1576,6 +1708,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "user"],
+    },
   },
 } as const

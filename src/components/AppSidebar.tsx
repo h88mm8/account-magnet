@@ -1,7 +1,8 @@
-import { Search, BarChart3, Settings, HelpCircle, List, Send, LogOut, Coins, GitBranch, Mail, Phone } from "lucide-react";
+import { Search, BarChart3, Settings, HelpCircle, List, Send, LogOut, Coins, GitBranch, Mail, Phone, Shield } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCredits } from "@/hooks/useCredits";
+import { useAdminCheck } from "@/hooks/useAdminCheck";
 import {
   Sidebar,
   SidebarContent,
@@ -30,6 +31,7 @@ const secondaryNav = [
 export function AppSidebar() {
   const { signOut } = useAuth();
   const { leads, email, phone } = useCredits();
+  const { isAdmin } = useAdminCheck();
 
   return (
     <Sidebar className="border-r border-border">
@@ -103,6 +105,20 @@ export function AppSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
           ))}
+          {isAdmin && (
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild>
+                <NavLink
+                  to="/admin/billing"
+                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  activeClassName="bg-primary/8 text-primary font-medium"
+                >
+                  <Shield className="h-4 w-4" />
+                  <span>Admin Billing</span>
+                </NavLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
           <SidebarMenuItem>
             <SidebarMenuButton
               onClick={signOut}
