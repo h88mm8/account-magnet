@@ -1,26 +1,28 @@
-import { Building2, Users, TrendingUp, Target, Send } from "lucide-react";
+import { Building2, Users, TrendingUp, Target, Send, Coins, Mail, Phone } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useRealMetrics } from "@/hooks/useRealMetrics";
+import { useCredits } from "@/hooks/useCredits";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function StatsCards() {
   const { data: metrics, isLoading } = useRealMetrics();
+  const { leads, email, phone, isLoading: creditsLoading } = useCredits();
 
   const stats = [
     {
-      label: "Empresas salvas",
-      value: metrics?.companiesSaved ?? 0,
-      icon: Building2,
+      label: "Créditos Leads",
+      value: leads.toLocaleString("pt-BR"),
+      icon: Coins,
     },
     {
-      label: "Contatos salvos",
-      value: metrics?.contactsSaved ?? 0,
-      icon: Users,
+      label: "Créditos Email",
+      value: email.toLocaleString("pt-BR"),
+      icon: Mail,
     },
     {
-      label: "Taxa de conversão",
-      value: `${metrics?.conversionRate ?? 0}%`,
-      icon: TrendingUp,
+      label: "Créditos Celular",
+      value: phone.toLocaleString("pt-BR"),
+      icon: Phone,
     },
     {
       label: "Listas ativas",
@@ -44,7 +46,7 @@ export function StatsCards() {
               <stat.icon className="h-4 w-4 text-muted-foreground/50" />
             </div>
             <div className="mt-2">
-              {isLoading ? (
+              {(isLoading || creditsLoading) ? (
                 <Skeleton className="h-8 w-20" />
               ) : (
                 <span className="font-display text-2xl font-bold text-foreground">

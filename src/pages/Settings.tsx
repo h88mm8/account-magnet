@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { User, Link2, Bell, CreditCard, MessageCircle, RefreshCw, Linkedin, Mail, Pen, MousePointerClick, Upload, Palette, ShieldBan, Trash2, Loader2 } from "lucide-react";
+import { User, Link2, Bell, CreditCard, MessageCircle, RefreshCw, Linkedin, Mail, Pen, MousePointerClick, Upload, Palette, ShieldBan, Trash2, Loader2, Phone, Coins, ExternalLink } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -344,59 +344,7 @@ const Settings = () => {
 
         {/* Subscription */}
         <TabsContent value="subscription">
-          <Card className="border border-border shadow-none">
-            <CardHeader>
-              <CardTitle className="font-display text-lg">Assinatura e Limites</CardTitle>
-              <CardDescription>Gerencie seu plano e limites de pesquisa.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-foreground">Plano Pro</p>
-                    <p className="text-sm text-muted-foreground">500 buscas/mês • 10.000 contatos</p>
-                  </div>
-                  <Badge className="bg-primary text-primary-foreground">Ativo</Badge>
-                </div>
-              </div>
-              <Separator />
-              <div className="space-y-3">
-                <div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Buscas realizadas</span>
-                    <span className="font-medium text-foreground">127 / 500</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground/70 mt-0.5">1 crédito por página retornada</p>
-                </div>
-                <div className="h-2 rounded-full bg-muted">
-                  <div className="h-2 rounded-full bg-primary" style={{ width: "25.4%" }} />
-                </div>
-                <div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Enriquecimento Email</span>
-                    <span className="font-medium text-foreground">—</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground/70 mt-0.5">1 crédito por email retornado</p>
-                </div>
-                <div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Enriquecimento Celular</span>
-                    <span className="font-medium text-foreground">—</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground/70 mt-0.5">8 créditos por telefone retornado</p>
-                </div>
-                <Separator className="my-1" />
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Contatos exportados</span>
-                  <span className="font-medium text-foreground">1,234 / 10,000</span>
-                </div>
-                <div className="h-2 rounded-full bg-muted">
-                  <div className="h-2 rounded-full bg-primary" style={{ width: "12.3%" }} />
-                </div>
-              </div>
-              <Button variant="outline" size="sm">Upgrade do plano</Button>
-            </CardContent>
-          </Card>
+          <SubscriptionTab />
         </TabsContent>
 
         {/* Tracking Page */}
@@ -1106,6 +1054,251 @@ function IntegrationCard({
           Conectar
         </Button>
       )}
+    </div>
+  );
+}
+
+function SubscriptionTab() {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const [subData, setSubData] = useState<any>(null);
+  const [subLoading, setSubLoading] = useState(true);
+
+  const fetchSub = async () => {
+    setSubLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("check-subscription");
+      if (error) throw error;
+      setSubData(data);
+    } catch { /* ignore */ }
+    setSubLoading(false);
+  };
+
+  useEffect(() => { fetchSub(); }, [user]);
+
+  const credits = subData?.credits ?? { leads: 50, email: 0, phone: 0 };
+  const licenses = subData?.licenses ?? { linkedin: { active: false }, whatsapp: { active: false } };
+
+  const handleBuyCredits = async (priceId: string) => {
+    try {
+      const { buyCredits } = await import("@/hooks/useSubscription");
+      await buyCredits(priceId);
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const handleSubscribe = async (priceId: string) => {
+    try {
+      const { subscribeLicense } = await import("@/hooks/useSubscription");
+      await subscribeLicense(priceId);
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const handlePortal = async () => {
+    try {
+      const { openCustomerPortal } = await import("@/hooks/useSubscription");
+      await openCustomerPortal();
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const searchParams2 = new URLSearchParams(window.location.search);
+  const checkoutStatus = searchParams2.get("checkout");
+
+  useEffect(() => {
+    if (checkoutStatus === "success") {
+      toast({ title: "Pagamento realizado!", description: "Seus créditos serão adicionados em instantes." });
+      fetchSub();
+    }
+  }, [checkoutStatus]);
+
+  if (subLoading) {
+    return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
+  }
+
+  const CREDIT_PACKAGES = {
+    leads: [
+      { amount: 500, price: "R$ 49", priceId: "price_1T59QORwW8qJ8nV68dJWv29N" },
+      { amount: 1000, price: "R$ 89", priceId: "price_1T59QnRwW8qJ8nV6EMgeZh5d" },
+      { amount: 5000, price: "R$ 399", priceId: "price_1T59aURwW8qJ8nV6F8bqrTCj" },
+      { amount: 10000, price: "R$ 699", priceId: "price_1T59aqRwW8qJ8nV6hxCkXHoK" },
+    ],
+    email: [
+      { amount: 1000, price: "R$ 49", priceId: "price_1T59b2RwW8qJ8nV6DXbbJSAY" },
+      { amount: 10000, price: "R$ 299", priceId: "price_1T59bHRwW8qJ8nV6GRbFCmT6" },
+      { amount: 50000, price: "R$ 999", priceId: "price_1T59bYRwW8qJ8nV6iqRC9m2c" },
+    ],
+  };
+
+  const CHANNEL_LICENSES = {
+    linkedin: { price: "R$ 39/mês", priceId: "price_1T59bmRwW8qJ8nV6mretS07k" },
+    whatsapp: { price: "R$ 39/mês", priceId: "price_1T59byRwW8qJ8nV6TedKVN5y" },
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Current Balances */}
+      <Card className="border border-border shadow-none">
+        <CardHeader>
+          <CardTitle className="font-display text-lg">Saldo de Créditos</CardTitle>
+          <CardDescription>Créditos não expiram. Consumidos apenas quando resultado válido é retornado.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="rounded-lg border border-border p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Coins className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium text-foreground">Leads</span>
+              </div>
+              <span className="font-display text-2xl font-bold text-foreground">{credits?.leads?.toLocaleString("pt-BR") ?? 0}</span>
+              <p className="text-xs text-muted-foreground mt-1">Consumido por lead válido retornado</p>
+            </div>
+            <div className="rounded-lg border border-border p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Mail className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium text-foreground">Email</span>
+              </div>
+              <span className="font-display text-2xl font-bold text-foreground">{credits?.email?.toLocaleString("pt-BR") ?? 0}</span>
+              <p className="text-xs text-muted-foreground mt-1">Consumido por email enviado</p>
+            </div>
+            <div className="rounded-lg border border-border p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Phone className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium text-foreground">Celular</span>
+              </div>
+              <span className="font-display text-2xl font-bold text-foreground">{credits?.phone?.toLocaleString("pt-BR") ?? 0}</span>
+              <p className="text-xs text-muted-foreground mt-1">Consumido por número válido encontrado</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Buy Lead Credits */}
+      <Card className="border border-border shadow-none">
+        <CardHeader>
+          <CardTitle className="font-display text-lg flex items-center gap-2">
+            <Coins className="h-5 w-5" />
+            Comprar Créditos de Leads
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-4">
+            {CREDIT_PACKAGES.leads.map((pkg) => (
+              <button
+                key={pkg.priceId}
+                onClick={() => handleBuyCredits(pkg.priceId)}
+                className="rounded-lg border border-border p-4 text-left transition-colors hover:border-primary hover:bg-primary/5"
+              >
+                <span className="font-display text-lg font-bold text-foreground">{pkg.amount.toLocaleString("pt-BR")}</span>
+                <p className="text-xs text-muted-foreground">créditos de leads</p>
+                <p className="mt-2 text-sm font-semibold text-primary">{pkg.price}</p>
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Buy Email Credits */}
+      <Card className="border border-border shadow-none">
+        <CardHeader>
+          <CardTitle className="font-display text-lg flex items-center gap-2">
+            <Mail className="h-5 w-5" />
+            Comprar Créditos de Email
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {CREDIT_PACKAGES.email.map((pkg) => (
+              <button
+                key={pkg.priceId}
+                onClick={() => handleBuyCredits(pkg.priceId)}
+                className="rounded-lg border border-border p-4 text-left transition-colors hover:border-primary hover:bg-primary/5"
+              >
+                <span className="font-display text-lg font-bold text-foreground">{pkg.amount.toLocaleString("pt-BR")}</span>
+                <p className="text-xs text-muted-foreground">créditos de email</p>
+                <p className="mt-2 text-sm font-semibold text-primary">{pkg.price}</p>
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Channel Licenses */}
+      <Card className="border border-border shadow-none">
+        <CardHeader>
+          <CardTitle className="font-display text-lg">Licenças de Canal</CardTitle>
+          <CardDescription>Ative canais para envio de campanhas. Assinatura mensal recorrente.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* LinkedIn */}
+          <div className="flex items-center justify-between rounded-lg border border-border p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
+                <Linkedin className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-foreground">LinkedIn</p>
+                <p className="text-xs text-muted-foreground">{CHANNEL_LICENSES.linkedin.price}</p>
+              </div>
+            </div>
+            {licenses?.linkedin?.active ? (
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="border-green-300 text-green-700">Ativa</Badge>
+                <Button variant="outline" size="sm" onClick={handlePortal} className="gap-1">
+                  <ExternalLink className="h-3 w-3" />
+                  Gerenciar
+                </Button>
+              </div>
+            ) : (
+              <Button size="sm" onClick={() => handleSubscribe(CHANNEL_LICENSES.linkedin.priceId)}>
+                Ativar
+              </Button>
+            )}
+          </div>
+
+          {/* WhatsApp */}
+          <div className="flex items-center justify-between rounded-lg border border-border p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100">
+                <MessageCircle className="h-5 w-5 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-foreground">WhatsApp</p>
+                <p className="text-xs text-muted-foreground">{CHANNEL_LICENSES.whatsapp.price}</p>
+              </div>
+            </div>
+            {licenses?.whatsapp?.active ? (
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="border-green-300 text-green-700">Ativa</Badge>
+                <Button variant="outline" size="sm" onClick={handlePortal} className="gap-1">
+                  <ExternalLink className="h-3 w-3" />
+                  Gerenciar
+                </Button>
+              </div>
+            ) : (
+              <Button size="sm" onClick={() => handleSubscribe(CHANNEL_LICENSES.whatsapp.priceId)}>
+                Ativar
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Manage */}
+      <div className="flex gap-3">
+        <Button variant="outline" size="sm" onClick={handlePortal} className="gap-2">
+          <ExternalLink className="h-4 w-4" />
+          Gerenciar assinaturas
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => fetchSub()}>
+          <RefreshCw className="h-4 w-4 mr-1" />
+          Atualizar
+        </Button>
+      </div>
     </div>
   );
 }
