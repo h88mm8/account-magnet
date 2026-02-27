@@ -121,6 +121,45 @@ export type Database = {
         }
         Relationships: []
       }
+      campaign_email_logs: {
+        Row: {
+          campaign_id: string
+          created_at: string
+          error_message: string | null
+          external_message_id: string | null
+          id: string
+          lead_id: string | null
+          provider: string
+          sender_email: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string
+          error_message?: string | null
+          external_message_id?: string | null
+          id?: string
+          lead_id?: string | null
+          provider?: string
+          sender_email?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string
+          error_message?: string | null
+          external_message_id?: string | null
+          id?: string
+          lead_id?: string | null
+          provider?: string
+          sender_email?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       campaign_leads: {
         Row: {
           accepted_at: string | null

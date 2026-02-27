@@ -387,8 +387,10 @@ Deno.serve(async (req) => {
               // Wrap URLs for tracking
               const message = await wrapUrlsInMessage(supabase, rawMessage, campaign.user_id, lead.lead_id, lead.id, SUPABASE_PROJECT_ID);
 
-              // Build CTA tracking button
+              // Build CTA tracking button (only if campaign has CTA text set)
               let ctaBlock = "";
+              const hasCta = campaign.cta_button_text && campaign.cta_button_text.trim() !== "";
+              if (hasCta) {
               try {
                 const { data: trackSettings } = await supabase
                   .from("tracking_page_settings")
@@ -422,14 +424,17 @@ Deno.serve(async (req) => {
 
                     ctaBlock = `
                       <div style="margin:24px 0;text-align:left;">
-                        <a href="${btnUrl}" style="display:inline-block;background-color:${btnColor};color:${btnFontColor};padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:16px;">
-                          ${btnText}
+                        <a href="${btnUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background-color:${btnColor};color:${btnFontColor};padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:16px;font-family:Arial,Helvetica,sans-serif;line-height:1.4;mso-padding-alt:0;text-align:center;">
+                          <!--[if mso]><i style="letter-spacing:28px;mso-font-width:-100%;mso-text-raise:21pt">&nbsp;</i><![endif]-->
+                          <span style="mso-text-raise:10pt;font-weight:600;">${btnText}</span>
+                          <!--[if mso]><i style="letter-spacing:28px;mso-font-width:-100%">&nbsp;</i><![endif]-->
                         </a>
                       </div>`;
                   }
                 }
               } catch (trackErr) {
                 console.error(`[TRACKING] Failed to inject tracking button:`, trackErr.message);
+              }
               }
 
               let finalBody = message + ctaBlock;
@@ -473,6 +478,7 @@ Deno.serve(async (req) => {
                   try {
                     const resendData = await resendResp.json();
                     const resendId = resendData?.id || "";
+                    // Log to messages_sent
                     await supabase.from("messages_sent").insert({
                       user_id: campaign.user_id,
                       lead_id: lead.lead_id,
@@ -481,7 +487,17 @@ Deno.serve(async (req) => {
                       content: campaign.subject || "",
                       message_type: "email",
                       status: "sent",
-                      unipile_message_id: resendId, // reusing field for Resend ID
+                      unipile_message_id: resendId,
+                    });
+                    // Log to campaign_email_logs for audit
+                    await supabase.from("campaign_email_logs").insert({
+                      campaign_id: campaign.id,
+                      user_id: campaign.user_id,
+                      lead_id: lead.lead_id,
+                      provider: "resend",
+                      sender_email: resendCfg.sender_email,
+                      external_message_id: resendId,
+                      status: "sent",
                     });
                     console.log(`[SEND] Email sent via Resend, id=${resendId}`);
                   } catch (parseErr) {
@@ -491,6 +507,17 @@ Deno.serve(async (req) => {
                   const errBody = await resendResp.text().catch(() => "");
                   errorMsg = `Resend API error [${resendResp.status}]: ${errBody.slice(0, 200)}`;
                   console.error(`[SEND_FAIL] ${errorMsg}`);
+
+                  // Log failed send to audit table
+                  await supabase.from("campaign_email_logs").insert({
+                    campaign_id: campaign.id,
+                    user_id: campaign.user_id,
+                    lead_id: lead.lead_id,
+                    provider: "resend",
+                    sender_email: resendCfg.sender_email,
+                    status: "failed",
+                    error_message: errorMsg.slice(0, 500),
+                  }).catch(() => {});
 
                   // Auto-blocklist on hard failures
                   if (resendResp.status === 422 && leadData.email) {
