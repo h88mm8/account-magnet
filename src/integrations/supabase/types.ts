@@ -383,6 +383,39 @@ export type Database = {
         }
         Relationships: []
       }
+      credit_topups: {
+        Row: {
+          amount_paid_cents: number
+          created_at: string
+          currency: string
+          email_credits: number
+          id: string
+          phone_credits: number
+          stripe_session_id: string | null
+          user_id: string
+        }
+        Insert: {
+          amount_paid_cents?: number
+          created_at?: string
+          currency?: string
+          email_credits?: number
+          id?: string
+          phone_credits?: number
+          stripe_session_id?: string | null
+          user_id: string
+        }
+        Update: {
+          amount_paid_cents?: number
+          created_at?: string
+          currency?: string
+          email_credits?: number
+          id?: string
+          phone_credits?: number
+          stripe_session_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       credit_transactions: {
         Row: {
           amount: number
@@ -410,6 +443,33 @@ export type Database = {
           reference_id?: string | null
           type?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      credit_unit_prices: {
+        Row: {
+          credit_type: string
+          currency: string
+          id: string
+          unit_price_cents: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          credit_type: string
+          currency?: string
+          id?: string
+          unit_price_cents?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          credit_type?: string
+          currency?: string
+          id?: string
+          unit_price_cents?: number
+          updated_at?: string
+          updated_by?: string | null
         }
         Relationships: []
       }
@@ -1088,6 +1148,27 @@ export type Database = {
         }
         Relationships: []
       }
+      stripe_events: {
+        Row: {
+          event_type: string
+          id: string
+          processed_at: string
+          stripe_event_id: string
+        }
+        Insert: {
+          event_type: string
+          id?: string
+          processed_at?: string
+          stripe_event_id: string
+        }
+        Update: {
+          event_type?: string
+          id?: string
+          processed_at?: string
+          stripe_event_id?: string
+        }
+        Relationships: []
+      }
       tracking_page_settings: {
         Row: {
           background_color: string
@@ -1547,6 +1628,17 @@ export type Database = {
       add_phone_credits: {
         Args: { p_amount: number; p_description?: string; p_user_id: string }
         Returns: number
+      }
+      apply_dynamic_credit_topup: {
+        Args: {
+          p_amount_paid_cents?: number
+          p_email_credits: number
+          p_phone_credits: number
+          p_stripe_event_id: string
+          p_stripe_session_id?: string
+          p_user_id: string
+        }
+        Returns: boolean
       }
       deduct_credits: {
         Args: {
