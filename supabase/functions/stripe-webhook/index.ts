@@ -18,6 +18,11 @@ const CREDIT_PACKAGES: Record<string, { type: string; amount: number }> = {
   "price_1T59bYRwW8qJ8nV6iqRC9m2c": { type: "email", amount: 50000 },
 };
 
+const logStep = (step: string, details?: unknown) => {
+  const d = details ? ` - ${JSON.stringify(details)}` : "";
+  console.log(`[STRIPE-WEBHOOK] ${step}${d}`);
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -37,18 +42,42 @@ serve(async (req) => {
     const body = await req.text();
     const sig = req.headers.get("stripe-signature");
 
+    // FIX #1: REQUIRE webhook signature validation — no fallback
     const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
-    let event: Stripe.Event;
-
-    if (webhookSecret && sig) {
-      event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
-    } else {
-      event = JSON.parse(body) as Stripe.Event;
+    if (!webhookSecret) {
+      logStep("ERROR", { message: "STRIPE_WEBHOOK_SECRET not configured" });
+      return new Response(JSON.stringify({ error: "Webhook secret not configured" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+      });
     }
+    if (!sig) {
+      logStep("ERROR", { message: "Missing stripe-signature header" });
+      return new Response(JSON.stringify({ error: "Missing signature" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400,
+      });
+    }
+
+    const event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
+    logStep("Event received", { type: event.type, id: event.id });
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
       const userId = session.metadata?.user_id;
+
+      // FIX #2: Verify payment_status before delivering credits
+      if (session.payment_status !== "paid") {
+        logStep("Payment not yet paid, skipping credit delivery", {
+          sessionId: session.id,
+          paymentStatus: session.payment_status,
+        });
+        return new Response(JSON.stringify({ received: true, skipped: "unpaid" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
       const flow = session.metadata?.flow;
 
       if (userId && flow === "dynamic") {
@@ -56,7 +85,8 @@ serve(async (req) => {
         const phoneCredits = parseInt(session.metadata?.phone_credits || "0", 10);
         const emailCredits = parseInt(session.metadata?.email_credits || "0", 10);
 
-        await supabase.rpc("apply_dynamic_credit_topup", {
+        // FIX #4: Check RPC result for errors
+        const { data: rpcResult, error: rpcError } = await supabase.rpc("apply_dynamic_credit_topup", {
           p_stripe_event_id: event.id,
           p_user_id: userId,
           p_phone_credits: phoneCredits,
@@ -64,21 +94,61 @@ serve(async (req) => {
           p_stripe_session_id: session.id,
           p_amount_paid_cents: session.amount_total || 0,
         });
+
+        if (rpcError) {
+          logStep("ERROR: RPC apply_dynamic_credit_topup failed", { error: rpcError.message });
+          throw new Error(`RPC failed: ${rpcError.message}`);
+        }
+
+        if (rpcResult === false) {
+          logStep("Duplicate event, already processed", { eventId: event.id });
+        } else {
+          logStep("Dynamic credits applied", { phoneCredits, emailCredits, userId });
+        }
       } else if (userId && session.mode === "payment") {
         // === LEGACY FIXED PACKAGES ===
         const priceId = session.metadata?.price_id;
         if (priceId) {
           const pkg = CREDIT_PACKAGES[priceId];
           if (pkg) {
-            const fnName = pkg.type === "leads" ? "add_leads_credits"
-              : pkg.type === "email" ? "add_email_credits"
-              : "add_phone_credits";
+            // FIX #3: Idempotency for legacy flow — check stripe_events first
+            const { data: existingEvent } = await supabase
+              .from("stripe_events")
+              .select("id")
+              .eq("stripe_event_id", event.id)
+              .maybeSingle();
 
-            await supabase.rpc(fnName, {
-              p_user_id: userId,
-              p_amount: pkg.amount,
-              p_description: `Compra Stripe: ${pkg.amount} créditos de ${pkg.type}`,
-            });
+            if (existingEvent) {
+              logStep("Legacy duplicate event, skipping", { eventId: event.id });
+            } else {
+              // Record event for idempotency
+              const { error: insertError } = await supabase
+                .from("stripe_events")
+                .insert({ stripe_event_id: event.id, event_type: event.type });
+
+              if (insertError) {
+                // Unique constraint violation means another process handled it
+                logStep("Event already recorded (race condition handled)", { eventId: event.id });
+              } else {
+                const fnName = pkg.type === "leads" ? "add_leads_credits"
+                  : pkg.type === "email" ? "add_email_credits"
+                  : "add_phone_credits";
+
+                // FIX #4: Check RPC result
+                const { error: creditError } = await supabase.rpc(fnName, {
+                  p_user_id: userId,
+                  p_amount: pkg.amount,
+                  p_description: `Compra Stripe: ${pkg.amount} créditos de ${pkg.type}`,
+                });
+
+                if (creditError) {
+                  logStep("ERROR: Legacy credit RPC failed", { error: creditError.message, fnName });
+                  throw new Error(`Legacy RPC failed: ${creditError.message}`);
+                }
+
+                logStep("Legacy credits applied", { type: pkg.type, amount: pkg.amount, userId });
+              }
+            }
           }
         }
       }
@@ -89,16 +159,21 @@ serve(async (req) => {
           ? session.subscription
           : session.subscription.id;
 
-        // Determine channel from metadata or price
         const channel = session.metadata?.channel;
         if (channel) {
-          await supabase.from("channel_licenses").upsert({
+          const { error: licenseError } = await supabase.from("channel_licenses").upsert({
             user_id: userId,
             channel,
             status: "active",
             stripe_subscription_id: subId,
             expires_at: null,
           }, { onConflict: "user_id,channel" });
+
+          if (licenseError) {
+            logStep("ERROR: License upsert failed", { error: licenseError.message });
+          } else {
+            logStep("License activated", { channel, userId });
+          }
         }
       }
     }
@@ -106,12 +181,16 @@ serve(async (req) => {
     // Handle subscription cancellation/deletion
     if (event.type === "customer.subscription.deleted") {
       const sub = event.data.object as Stripe.Subscription;
-      const subId = sub.id;
-
-      await supabase
+      const { error: delError } = await supabase
         .from("channel_licenses")
         .update({ status: "inactive" })
-        .eq("stripe_subscription_id", subId);
+        .eq("stripe_subscription_id", sub.id);
+
+      if (delError) {
+        logStep("ERROR: License deactivation failed", { error: delError.message });
+      } else {
+        logStep("License deactivated", { subscriptionId: sub.id });
+      }
     }
 
     return new Response(JSON.stringify({ received: true }), {
@@ -119,7 +198,7 @@ serve(async (req) => {
       status: 200,
     });
   } catch (error) {
-    console.error("Stripe webhook error:", error);
+    logStep("ERROR", { message: (error as Error).message });
     return new Response(JSON.stringify({ error: (error as Error).message }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 400,
