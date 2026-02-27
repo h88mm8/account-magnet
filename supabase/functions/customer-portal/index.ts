@@ -33,7 +33,12 @@ serve(async (req) => {
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
     const customers = await stripe.customers.list({ email: user.email, limit: 1 });
-    if (customers.data.length === 0) throw new Error("No Stripe customer found");
+    if (customers.data.length === 0) {
+      return new Response(JSON.stringify({ error: "Nenhuma compra encontrada. Faça sua primeira compra para acessar o portal." }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 404,
+      });
+    }
 
     const origin = req.headers.get("origin") || "https://account-magnet.lovable.app";
     const portalSession = await stripe.billingPortal.sessions.create({
