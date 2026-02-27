@@ -528,13 +528,6 @@ Deno.serve(async (req) => {
             }
             }
           }
-              } catch (e) {
-                errorMsg = `Email request failed: ${e.message}`;
-                console.error(`[SEND_FAIL] ${errorMsg}`);
-              }
-            }
-            }
-          }
 
           // ============ WHATSAPP — delegated to unipile-messages ============
           else if (campaign.channel === "whatsapp") {
