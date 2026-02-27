@@ -22,6 +22,8 @@ import NotFound from "./pages/NotFound";
 import TrackingPage from "./pages/TrackingPage";
 import Documentation from "./pages/Documentation";
 import AdminBilling from "./pages/AdminBilling";
+import Billing from "./pages/Billing";
+import BillingSuccess from "./pages/BillingSuccess";
 
 const queryClient = new QueryClient();
 
@@ -57,6 +59,8 @@ function ProtectedLayout() {
               <Route path="/settings" element={<Settings />} />
               <Route path="/help" element={<Help />} />
               <Route path="/admin/billing" element={<AdminBilling />} />
+              <Route path="/billing" element={<Billing />} />
+              <Route path="/billing/success" element={<BillingSuccess />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </main>
