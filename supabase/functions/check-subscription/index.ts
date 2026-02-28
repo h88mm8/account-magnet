@@ -53,7 +53,9 @@ serve(async (req) => {
 
       for (const sub of subscriptions.data) {
         const productId = sub.items.data[0]?.price?.product;
-        const expiresAt = new Date(sub.current_period_end * 1000).toISOString();
+        const expiresAt = sub.current_period_end
+          ? new Date(sub.current_period_end * 1000).toISOString()
+          : null;
 
         if (productId === LINKEDIN_PRODUCT) {
           licenses.linkedin = { active: true, expires_at: expiresAt };
