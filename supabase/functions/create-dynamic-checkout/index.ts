@@ -31,8 +31,8 @@ serve(async (req) => {
     const user = data.user;
     if (!user?.email) throw new Error("User not authenticated");
 
-    const { phone_credits = 0, email_credits = 0 } = await req.json();
-    if (phone_credits <= 0 && email_credits <= 0) {
+    const { leads_credits = 0, phone_credits = 0, email_credits = 0 } = await req.json();
+    if (leads_credits <= 0 && phone_credits <= 0 && email_credits <= 0) {
       throw new Error("Selecione pelo menos um tipo de crédito");
     }
 
@@ -60,6 +60,17 @@ serve(async (req) => {
 
     // Build line items
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
+
+    if (leads_credits > 0) {
+      lineItems.push({
+        price_data: {
+          currency: "brl",
+          product_data: { name: `${leads_credits} Créditos de Leads` },
+          unit_amount: priceMap["leads"] || 20,
+        },
+        quantity: leads_credits,
+      });
+    }
 
     if (phone_credits > 0) {
       lineItems.push({
@@ -94,6 +105,7 @@ serve(async (req) => {
       cancel_url: `${origin}/billing?checkout=canceled`,
       metadata: {
         user_id: user.id,
+        leads_credits: String(leads_credits),
         phone_credits: String(phone_credits),
         email_credits: String(email_credits),
         flow: "dynamic",
