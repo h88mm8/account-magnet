@@ -82,6 +82,7 @@ serve(async (req) => {
 
       if (userId && flow === "dynamic") {
         // === DYNAMIC FLOW ===
+        const leadsCredits = parseInt(session.metadata?.leads_credits || "0", 10);
         const phoneCredits = parseInt(session.metadata?.phone_credits || "0", 10);
         const emailCredits = parseInt(session.metadata?.email_credits || "0", 10);
 
@@ -103,7 +104,18 @@ serve(async (req) => {
         if (rpcResult === false) {
           logStep("Duplicate event, already processed", { eventId: event.id });
         } else {
-          logStep("Dynamic credits applied", { phoneCredits, emailCredits, userId });
+          // Add leads credits separately (not part of apply_dynamic_credit_topup RPC)
+          if (leadsCredits > 0) {
+            const { error: leadsError } = await supabase.rpc("add_leads_credits", {
+              p_user_id: userId,
+              p_amount: leadsCredits,
+              p_description: `Compra dinâmica: ${leadsCredits} créditos de leads`,
+            });
+            if (leadsError) {
+              logStep("ERROR: add_leads_credits failed", { error: leadsError.message });
+            }
+          }
+          logStep("Dynamic credits applied", { leadsCredits, phoneCredits, emailCredits, userId });
         }
       } else if (userId && session.mode === "payment") {
         // === LEGACY FIXED PACKAGES ===

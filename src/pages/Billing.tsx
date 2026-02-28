@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Phone, Mail, CreditCard, Loader2, Zap } from "lucide-react";
+import { Phone, Mail, CreditCard, Loader2, Zap, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSubscription } from "@/hooks/useSubscription";
 import { toast } from "sonner";
@@ -16,9 +16,10 @@ interface UnitPrice {
 
 export default function Billing() {
   const { credits } = useSubscription();
+  const [leadsCredits, setLeadsCredits] = useState(500);
   const [phoneCredits, setPhoneCredits] = useState(100);
   const [emailCredits, setEmailCredits] = useState(1000);
-  const [unitPrices, setUnitPrices] = useState<Record<string, number>>({ phone: 50, email: 10 });
+  const [unitPrices, setUnitPrices] = useState<Record<string, number>>({ leads: 20, phone: 50, email: 10 });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -34,12 +35,13 @@ export default function Billing() {
       });
   }, []);
 
+  const leadsTotal = (leadsCredits * (unitPrices.leads || 20)) / 100;
   const phoneTotal = (phoneCredits * (unitPrices.phone || 50)) / 100;
   const emailTotal = (emailCredits * (unitPrices.email || 10)) / 100;
-  const grandTotal = phoneTotal + emailTotal;
+  const grandTotal = leadsTotal + phoneTotal + emailTotal;
 
   const handleCheckout = async () => {
-    if (phoneCredits <= 0 && emailCredits <= 0) {
+    if (leadsCredits <= 0 && phoneCredits <= 0 && emailCredits <= 0) {
       toast.error("Selecione pelo menos um tipo de crédito");
       return;
     }
@@ -47,7 +49,7 @@ export default function Billing() {
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("create-dynamic-checkout", {
-        body: { phone_credits: phoneCredits, email_credits: emailCredits },
+        body: { leads_credits: leadsCredits, phone_credits: phoneCredits, email_credits: emailCredits },
       });
       if (error) throw error;
       if (data?.url) {
@@ -71,7 +73,16 @@ export default function Billing() {
       </div>
 
       {/* Current balance */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="pt-4 flex items-center gap-3">
+            <Users className="h-5 w-5 text-violet-500" />
+            <div>
+              <p className="text-sm text-muted-foreground">Saldo Leads</p>
+              <p className="text-xl font-bold">{credits.leads}</p>
+            </div>
+          </CardContent>
+        </Card>
         <Card>
           <CardContent className="pt-4 flex items-center gap-3">
             <Phone className="h-5 w-5 text-emerald-500" />
@@ -91,6 +102,32 @@ export default function Billing() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Leads slider */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Users className="h-5 w-5 text-violet-500" />
+            Créditos de Leads
+          </CardTitle>
+          <CardDescription>
+            {formatBRL((unitPrices.leads || 20) / 100)} por crédito
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Slider
+            value={[leadsCredits]}
+            onValueChange={(v) => setLeadsCredits(v[0])}
+            min={0}
+            max={10000}
+            step={100}
+          />
+          <div className="flex justify-between items-center">
+            <Badge variant="secondary">{leadsCredits.toLocaleString()} créditos</Badge>
+            <span className="font-semibold">{formatBRL(leadsTotal)}</span>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Phone slider */}
       <Card>
@@ -147,6 +184,10 @@ export default function Billing() {
       {/* Summary */}
       <Card>
         <CardContent className="pt-6 space-y-3">
+          <div className="flex justify-between text-sm">
+            <span>Leads ({leadsCredits.toLocaleString()} × {formatBRL((unitPrices.leads || 20) / 100)})</span>
+            <span>{formatBRL(leadsTotal)}</span>
+          </div>
           <div className="flex justify-between text-sm">
             <span>Telefone ({phoneCredits} × {formatBRL((unitPrices.phone || 50) / 100)})</span>
             <span>{formatBRL(phoneTotal)}</span>
