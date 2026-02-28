@@ -8,8 +8,8 @@ const corsHeaders = {
 };
 
 // Product IDs for channel licenses
-const LINKEDIN_PRODUCT = "prod_U3G8s5GjYgD52X";
-const WHATSAPP_PRODUCT = "prod_U3G8Ak8tHtCb3U";
+const LINKEDIN_PRODUCT = "prod_U3u2XL1xccpcPD";
+const WHATSAPP_PRODUCT = "prod_U3u1LeKKzaZALh";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {

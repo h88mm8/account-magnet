@@ -7,15 +7,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Legacy fixed credit packages (kept for backward compatibility)
 const CREDIT_PACKAGES: Record<string, { type: string; amount: number }> = {
-  "price_1T59QORwW8qJ8nV68dJWv29N": { type: "leads", amount: 500 },
-  "price_1T59QnRwW8qJ8nV6EMgeZh5d": { type: "leads", amount: 1000 },
-  "price_1T59aURwW8qJ8nV6F8bqrTCj": { type: "leads", amount: 5000 },
-  "price_1T59aqRwW8qJ8nV6hxCkXHoK": { type: "leads", amount: 10000 },
-  "price_1T59b2RwW8qJ8nV6DXbbJSAY": { type: "email", amount: 1000 },
-  "price_1T59bHRwW8qJ8nV6GRbFCmT6": { type: "email", amount: 10000 },
-  "price_1T59bYRwW8qJ8nV6iqRC9m2c": { type: "email", amount: 50000 },
+  "price_1T5m8ORwW8qJ8nV6r43cr4dh": { type: "leads", amount: 500 },
+  "price_1T5m9RRwW8qJ8nV6sDTxrJ9e": { type: "leads", amount: 1000 },
+  "price_1T5mA2RwW8qJ8nV6tichJPUM": { type: "leads", amount: 5000 },
+  "price_1T5mATRwW8qJ8nV67fO2QRnx": { type: "leads", amount: 10000 },
+  "price_1T5mCERwW8qJ8nV6GMTlt4dP": { type: "email", amount: 1000 },
+  "price_1T5mCaRwW8qJ8nV6FzrJlAJy": { type: "email", amount: 10000 },
+  "price_1T5mD1RwW8qJ8nV6PChzg4lV": { type: "email", amount: 50000 },
 };
 
 const logStep = (step: string, details?: unknown) => {

@@ -21,21 +21,21 @@ export interface SubscriptionState {
 // Stripe product/price mapping
 export const CREDIT_PACKAGES = {
   leads: [
-    { amount: 500, price: "R$ 49", priceId: "price_1T59QORwW8qJ8nV68dJWv29N" },
-    { amount: 1000, price: "R$ 89", priceId: "price_1T59QnRwW8qJ8nV6EMgeZh5d" },
-    { amount: 5000, price: "R$ 399", priceId: "price_1T59aURwW8qJ8nV6F8bqrTCj" },
-    { amount: 10000, price: "R$ 699", priceId: "price_1T59aqRwW8qJ8nV6hxCkXHoK" },
+    { amount: 500, price: "R$ 49", priceId: "price_1T5m8ORwW8qJ8nV6r43cr4dh" },
+    { amount: 1000, price: "R$ 89", priceId: "price_1T5m9RRwW8qJ8nV6sDTxrJ9e" },
+    { amount: 5000, price: "R$ 399", priceId: "price_1T5mA2RwW8qJ8nV6tichJPUM" },
+    { amount: 10000, price: "R$ 699", priceId: "price_1T5mATRwW8qJ8nV67fO2QRnx" },
   ],
   email: [
-    { amount: 1000, price: "R$ 49", priceId: "price_1T59b2RwW8qJ8nV6DXbbJSAY" },
-    { amount: 10000, price: "R$ 299", priceId: "price_1T59bHRwW8qJ8nV6GRbFCmT6" },
-    { amount: 50000, price: "R$ 999", priceId: "price_1T59bYRwW8qJ8nV6iqRC9m2c" },
+    { amount: 1000, price: "R$ 49", priceId: "price_1T5mCERwW8qJ8nV6GMTlt4dP" },
+    { amount: 10000, price: "R$ 299", priceId: "price_1T5mCaRwW8qJ8nV6FzrJlAJy" },
+    { amount: 50000, price: "R$ 999", priceId: "price_1T5mD1RwW8qJ8nV6PChzg4lV" },
   ],
 } as const;
 
 export const CHANNEL_LICENSES = {
-  linkedin: { price: "R$ 39/mês", priceId: "price_1T59bmRwW8qJ8nV6mretS07k" },
-  whatsapp: { price: "R$ 39/mês", priceId: "price_1T59byRwW8qJ8nV6TedKVN5y" },
+  linkedin: { price: "R$ 39/mês", priceId: "price_1T5mECRwW8qJ8nV61HObhpyy" },
+  whatsapp: { price: "R$ 39/mês", priceId: "price_1T5mDtRwW8qJ8nV6SyIUVVdK" },
 } as const;
 
 export function useSubscription() {
@@ -76,9 +76,9 @@ export async function buyCredits(priceId: string) {
   if (data?.url) window.open(data.url, "_blank");
 }
 
-export async function subscribeLicense(priceId: string) {
+export async function subscribeLicense(priceId: string, channel: string) {
   const { data, error } = await supabase.functions.invoke("create-checkout", {
-    body: { priceId, mode: "subscription" },
+    body: { priceId, mode: "subscription", channel },
   });
   if (error) throw error;
   if (data?.url) window.open(data.url, "_blank");

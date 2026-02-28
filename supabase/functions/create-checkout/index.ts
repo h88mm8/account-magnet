@@ -24,7 +24,7 @@ serve(async (req) => {
     const user = data.user;
     if (!user?.email) throw new Error("User not authenticated");
 
-    const { priceId, mode } = await req.json();
+    const { priceId, mode, channel } = await req.json();
     if (!priceId) throw new Error("priceId is required");
 
     const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
@@ -49,6 +49,7 @@ serve(async (req) => {
       metadata: {
         user_id: user.id,
         price_id: priceId,
+        ...(channel ? { channel } : {}),
       },
     });
 

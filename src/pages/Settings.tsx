@@ -1088,10 +1088,10 @@ function SubscriptionTab() {
     }
   };
 
-  const handleSubscribe = async (priceId: string) => {
+  const handleSubscribe = async (priceId: string, channel: string) => {
     try {
       const { subscribeLicense } = await import("@/hooks/useSubscription");
-      await subscribeLicense(priceId);
+      await subscribeLicense(priceId, channel);
     } catch (e: any) {
       toast({ title: "Erro", description: e.message, variant: "destructive" });
     }
@@ -1122,21 +1122,21 @@ function SubscriptionTab() {
 
   const CREDIT_PACKAGES = {
     leads: [
-      { amount: 500, price: "R$ 49", priceId: "price_1T59QORwW8qJ8nV68dJWv29N" },
-      { amount: 1000, price: "R$ 89", priceId: "price_1T59QnRwW8qJ8nV6EMgeZh5d" },
-      { amount: 5000, price: "R$ 399", priceId: "price_1T59aURwW8qJ8nV6F8bqrTCj" },
-      { amount: 10000, price: "R$ 699", priceId: "price_1T59aqRwW8qJ8nV6hxCkXHoK" },
+      { amount: 500, price: "R$ 49", priceId: "price_1T5m8ORwW8qJ8nV6r43cr4dh" },
+      { amount: 1000, price: "R$ 89", priceId: "price_1T5m9RRwW8qJ8nV6sDTxrJ9e" },
+      { amount: 5000, price: "R$ 399", priceId: "price_1T5mA2RwW8qJ8nV6tichJPUM" },
+      { amount: 10000, price: "R$ 699", priceId: "price_1T5mATRwW8qJ8nV67fO2QRnx" },
     ],
     email: [
-      { amount: 1000, price: "R$ 49", priceId: "price_1T59b2RwW8qJ8nV6DXbbJSAY" },
-      { amount: 10000, price: "R$ 299", priceId: "price_1T59bHRwW8qJ8nV6GRbFCmT6" },
-      { amount: 50000, price: "R$ 999", priceId: "price_1T59bYRwW8qJ8nV6iqRC9m2c" },
+      { amount: 1000, price: "R$ 49", priceId: "price_1T5mCERwW8qJ8nV6GMTlt4dP" },
+      { amount: 10000, price: "R$ 299", priceId: "price_1T5mCaRwW8qJ8nV6FzrJlAJy" },
+      { amount: 50000, price: "R$ 999", priceId: "price_1T5mD1RwW8qJ8nV6PChzg4lV" },
     ],
   };
 
   const CHANNEL_LICENSES = {
-    linkedin: { price: "R$ 39/mês", priceId: "price_1T59bmRwW8qJ8nV6mretS07k" },
-    whatsapp: { price: "R$ 39/mês", priceId: "price_1T59byRwW8qJ8nV6TedKVN5y" },
+    linkedin: { price: "R$ 39/mês", priceId: "price_1T5mECRwW8qJ8nV61HObhpyy" },
+    whatsapp: { price: "R$ 39/mês", priceId: "price_1T5mDtRwW8qJ8nV6SyIUVVdK" },
   };
 
   return (
@@ -1254,7 +1254,7 @@ function SubscriptionTab() {
                 </Button>
               </div>
             ) : (
-              <Button size="sm" onClick={() => handleSubscribe(CHANNEL_LICENSES.linkedin.priceId)}>
+              <Button size="sm" onClick={() => handleSubscribe(CHANNEL_LICENSES.linkedin.priceId, "linkedin")}>
                 Ativar
               </Button>
             )}
@@ -1280,7 +1280,7 @@ function SubscriptionTab() {
                 </Button>
               </div>
             ) : (
-              <Button size="sm" onClick={() => handleSubscribe(CHANNEL_LICENSES.whatsapp.priceId)}>
+              <Button size="sm" onClick={() => handleSubscribe(CHANNEL_LICENSES.whatsapp.priceId, "whatsapp")}>
                 Ativar
               </Button>
             )}
