@@ -53,9 +53,19 @@ serve(async (req) => {
 
       for (const sub of subscriptions.data) {
         const productId = sub.items.data[0]?.price?.product;
-        const expiresAt = sub.current_period_end
-          ? new Date(sub.current_period_end * 1000).toISOString()
-          : null;
+        let expiresAt: string | null = null;
+        try {
+          if (sub.current_period_end) {
+            const ts = typeof sub.current_period_end === "number"
+              ? sub.current_period_end * 1000
+              : new Date(sub.current_period_end).getTime();
+            if (!isNaN(ts)) {
+              expiresAt = new Date(ts).toISOString();
+            }
+          }
+        } catch {
+          // skip invalid date
+        }
 
         if (productId === LINKEDIN_PRODUCT) {
           licenses.linkedin = { active: true, expires_at: expiresAt };
